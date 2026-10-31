@@ -1,0 +1,5 @@
+- Read [`FORK.md`](FORK.md) and the indicator-platform brief (`docs/superpowers/plans/2026-10-31-indicator-brief.md` in `Arnum-LLC/deapos-data`) before any change; this file adds to them and never relaxes them.
+- `main` is upstream's (PyneSys/pynecore), mirrors it, and is never committed to; work branches start from `origin/qg/main`.
+- PRs target `qg/main` and are squash-merged; the PR title is the squashed commit's subject and the `FORK.md` row's "Commit" cell, verbatim.
+- Tests live in upstream's tree and naming (`tests/…/test_9NN_*.py`, functions `__test_<what>__`); fork-only tests go in `qg/tests/` with the same naming.
+- The fork is public: no house script, TradingView export, member data, production or staging name, or secret ever appears in code, tests or CI; tests use synthetic data.
