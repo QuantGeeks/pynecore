@@ -4,7 +4,7 @@ on:
   push: { branches: [qg/main] }
   workflow_dispatch:
 permissions: { contents: read }
-env: { PYNE_SAVE_SCRIPT_TOML: "0" }
+env: { PYNE_SAVE_SCRIPT_TOML: "0", _TYPER_FORCE_DISABLE_TERMINAL: "1" } # typer forces styled help when GITHUB_ACTIONS is set; upstream's test_015 asserts the plain "--live" token (the third external run stopped here, 2026-10-31)
 jobs:
   tests:
     runs-on: ubuntu-24.04
