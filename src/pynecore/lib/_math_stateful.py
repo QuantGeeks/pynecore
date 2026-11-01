@@ -12,7 +12,9 @@ from typing import TypeVar
 
 from pynecore.types import NA, Persistent, PyneFloat, PyneInt
 from pynecore.core.random import PineRandom as _PineRandom
+from pynecore.core import rolling_sum as _rolling_sum
 from pynecore.core.rolling_sum import SumMachine as _SumMachine, rolling_sum_step
+from pynecore.core.window_sum import WindowSumMachine as _WindowSumMachine, window_sum_step
 
 TFI = TypeVar('TFI', float, int)
 
@@ -64,8 +66,12 @@ def sum(source: TFI | NA[TFI], length: int) -> PyneFloat:
     # The whole machine, its value window included, is one object: the loop-site
     # rollback restores it in O(1) through its own snapshot protocol instead of
     # copying slots and a series window back on every iteration. See
-    # ``core.rolling_sum`` for the machine and the measured laws behind it.
-    machine: Persistent[_SumMachine | None] = None
+    # ``core.rolling_sum`` for the machine and the measured laws behind it. The
+    # fork's opt-in "window" mode (spec 9.2 E1) swaps in ``core.window_sum``'s
+    # re-sum machine instead, chosen once, at the call site's creation.
+    machine: Persistent[_SumMachine | _WindowSumMachine | None] = None
     if machine is None:
-        machine = _SumMachine()
+        machine = _WindowSumMachine() if _rolling_sum.get_sum_mode() == "window" else _SumMachine()
+    if type(machine) is _WindowSumMachine:
+        return window_sum_step(machine, source, length)
     return rolling_sum_step(machine, source, length)

@@ -3,9 +3,12 @@
 
 Every commit subject after <base> that does not start with "qg:" (a carried,
 upstream-offerable patch) must equal the "Commit" cell of a row in the
-"## Carried patches" table of FORK.md, and that row's "Upstream issue" cell
-must be a filed https://github.com/PyneSys/pynecore/issues/<n>. With
---release <X-qg.N>, pyproject.toml's version must be X+qg.N (spec 4.9).
+"## Carried patches" table of FORK.md, and that row's "Upstream" cell must be
+a https://github.com/PyneSys/pynecore/issues/<n> URL or begin "not filed"
+(nothing is filed upstream, sev 2026-10-31; patches are simply carried); an
+empty cell or one beginning "pending:" (a write-up not yet finished) keeps the
+PR red. With --release <X-qg.N>, pyproject.toml's version must be X+qg.N
+(spec 4.9).
 """
 import argparse
 import re
@@ -58,7 +61,7 @@ def main() -> int:
         row = next((r for r in rows if r and r[0] == subject), None)
         if row is None:
             problems.append(f"FORK.md MISSING ROW: {subject}")
-        elif len(row) < 3 or not ISSUE_RE.fullmatch(row[2]):
+        elif len(row) < 3 or not (ISSUE_RE.fullmatch(row[2]) or row[2].startswith("not filed")):
             problems.append(f"FORK.md PENDING ISSUE: {subject}")
 
     if args.release:
