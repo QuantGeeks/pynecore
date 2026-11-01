@@ -2905,6 +2905,9 @@
     "extended_hours": {
       "type": "variable"
     },
+    "extended_session_corrections": {
+      "type": "variable"
+    },
     "industry": {
       "type": "variable"
     },
@@ -2971,6 +2974,12 @@
     "regular": {
       "type": "variable"
     },
+    "regular_hours": {
+      "type": "variable"
+    },
+    "regular_session_corrections": {
+      "type": "variable"
+    },
     "root": {
       "type": "variable"
     },
@@ -2980,7 +2989,13 @@
     "session": {
       "type": "variable"
     },
+    "session_corrections": {
+      "type": "variable"
+    },
     "session_ends": {
+      "type": "variable"
+    },
+    "session_schedules": {
       "type": "variable"
     },
     "session_starts": {

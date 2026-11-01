@@ -82,6 +82,8 @@ def layer_a_jobs() -> list[Job]:
     """Layer A: this package's two scripts on synthetic seeds 1–3."""
     scripts = Path(__file__).resolve().parent / "scripts"
     return ([Job(f"gate_ta@{s}", scripts / "gate_ta.py", synthetic_bars(s)) for s in (1, 2, 3)] +
+            [Job(f"gate_ta@4", scripts / "gate_ta.py", synthetic_bars(4),
+                 fixture_syminfo({"session": "regular", "tv_symbol": "AMEX:SPY"}))] +
             [Job(f"gate_draw@{s}", scripts / "gate_draw.py", synthetic_bars(s)) for s in (1, 2, 3)])
 
 

@@ -28,15 +28,24 @@ _extended_hours: list[SymInfoInterval] = []
 _regular_hours: list[SymInfoInterval] = []
 _regular_corrections: dict | None = None
 
-# Provider-supplied symbol details — annotation-only: the runner injects the values
-# per run (the fee/spread fields only when the data provider supplies them)
-opening_hours: list[SymInfoInterval]
-session_starts: list[SymInfoSession]
-session_ends: list[SymInfoSession]
-extended_hours: list[SymInfoInterval]
-avg_spread: float
-taker_fee: float
-maker_fee: float
+# Provider-supplied symbol details, injected per run by the runner — every name
+# carries its SymInfo field's default AS A VALUE: the fork's per-runner state
+# scan reads this module at import, and a slot that only exists once the first
+# runner setattrs it is never saved or restored, so a co-resident runner would
+# read another runner's session lists and fee fields (the runner overwrites
+# these per run; the fee/spread fields only when the data provider supplies them)
+opening_hours: list[SymInfoInterval] = []
+session_starts: list[SymInfoSession] = []
+session_ends: list[SymInfoSession] = []
+session_schedules: list = []
+session_corrections: dict = {}
+extended_hours: list[SymInfoInterval] = []
+extended_session_corrections: dict = {}
+regular_hours: list[SymInfoInterval] | None = None
+regular_session_corrections: dict | None = None
+avg_spread: float | None = None
+taker_fee: float | None = None
+maker_fee: float | None = None
 
 prefix: str = ""
 description: str = ""
@@ -88,4 +97,4 @@ target_price_median: float | NA = na_float
 target_price_date: int | NA = na_int
 target_price_estimates: PyneFloat = na_float
 
-_size_round_factor: float
+_size_round_factor: float = 1.0
