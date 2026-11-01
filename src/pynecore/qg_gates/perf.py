@@ -10,7 +10,14 @@ first 200 bars skipped, the median — one process per run, the median of
 ``house/`` scripts are reported only (a heavy house script is the governor's
 case, spec §4.2, not an engine regression).  With ``--baseline-python`` each
 line carries the base (compensated under the baseline, which has no window
-mode) and the ratio — reported, never gated.  ``QG_PERF_INJECT_US`` busy-waits
+mode) and the ratio.  What is gated (ruling 2026-11-01, after CI failed the
+absolute budget on a 2-core runner while laptop and docker passed): WITH a
+baseline, a script fails when any mode's ratio r > 1.25 — upstream measured on
+the same machine in the same run is the only comparison that means anything on
+unknown hardware — and the absolute y is reported only; WITHOUT a baseline
+(laptop-class hardware), the absolute y > 25.5 gates.  ``run_all.sh`` and the
+CI workflow always pass the baseline, so CI gates the ratio.
+``QG_PERF_INJECT_US`` busy-waits
 n µs per bar under the measured python only (the control).  The per-state
 ``activate`` p50 over 60 states is reported too (reference 100 µs,
 ``proof/scale/REPORT.md``), never gated.
@@ -27,7 +34,8 @@ from pathlib import Path
 
 from pynecore.qg_gates import common
 
-BUDGET = 25.5
+BUDGET = 25.5       # absolute, laptop-class hardware (no baseline given)
+RATIO_BUDGET = 1.25  # against upstream measured in the same run (ruling 2026-11-01)
 LAYER_A_DIR = Path(common.__file__).resolve().parent / "scripts"
 
 _RUN_CODE = """
@@ -120,11 +128,13 @@ def main() -> int:
                     menv["PYNE_SUM_MODE"] = "window"
                 y = statistics.median([_median_us(a.python, script, data, menv)
                                        for _ in range(a.runs)])
+                ratio = y / base_by_script[script] if script in base_by_script else None
                 line = f"PERF {sid} {mode} {y:.1f} us/bar (budget {BUDGET})"
-                if script in base_by_script:
-                    line += f" base {base_by_script[script]:.1f} ratio {y / base_by_script[script]:.2f}"
+                if ratio is not None:
+                    line += f" base {base_by_script[script]:.1f} ratio {ratio:.2f}"
                 print(line)
-                if y > BUDGET and not sid.startswith("house/"):
+                gated = ratio > RATIO_BUDGET if ratio is not None else y > BUDGET
+                if gated and not sid.startswith("house/"):
                     bad = True
             if bad:
                 failed += 1
