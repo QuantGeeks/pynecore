@@ -73,11 +73,11 @@ def __test_golden_pass_and_shift_fail__(tmp_path):
 def __test_drift_identical_and_mode_control__():
     py = sys.executable
     p = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py, "--require-identical")
-    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.3 vs 6.10.10+qg.3: 0/7 jobs differ []")
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.4 vs 6.10.10+qg.4: 0/7 jobs differ []")
     q = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py,
                            "--candidate-env", "PYNE_SUM_MODE=window", "--require-identical")
     assert q.returncode == 1
-    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.3 vs 6.10.10+qg.3: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
+    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.4 vs 6.10.10+qg.4: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
 
 
 def __test_perf_budget_and_injection__():
@@ -286,3 +286,17 @@ def __test_e1_compares_from_the_first_computable_bar__(tmp_path):
     assert q.returncode == 0, q.stdout + q.stderr
     assert "window exact 1961/2000" in q.stdout  # the 39 prior-history bars counted as mismatches
     assert q.stdout.strip().splitlines()[-1] == "E1 GATE (§9.2): 0 of 2 further exports agree; window mode stays off by default"
+
+
+def __test_perf_ratio_gates_the_compensated_mode_only__():
+    """ with a baseline: a window-mode slowdown above 1.25x but under the
+    absolute budget passes (the window re-sum is O(length), not fork overhead);
+    the same slowdown on the compensated mode fails (like for like) """
+    py = sys.executable
+    args = ("pynecore.qg_gates.perf", "--python", py, "--baseline-python", py)
+    base = __test_helper_gate(*args).stdout.strip().splitlines()[-1]
+    assert base == "PERF BUDGET PASS", base  # both modes' ratio ~1, unpoisoned
+    w = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_US": "3"})
+    assert (w.returncode, w.stdout.strip().splitlines()[-1]) == (0, "PERF BUDGET PASS"), w.stdout
+    c = __test_helper_gate(*args, env={"QG_PERF_INJECT_US": "3"})
+    assert (c.returncode, c.stdout.strip().splitlines()[-1]) == (1, "PERF BUDGET FAIL 2 scripts"), c.stdout

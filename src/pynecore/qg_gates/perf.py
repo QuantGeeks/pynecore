@@ -51,6 +51,8 @@ r = ScriptRunner(script_path=Path(%(script)r), ohlcv_iter=iter(bars), syminfo=sy
 t_prev = None
 ts = []
 inject = float(os.environ.get("QG_PERF_INJECT_US", "0") or "0")
+if not inject and os.environ.get("PYNE_SUM_MODE") == "window":
+    inject = float(os.environ.get("QG_PERF_INJECT_WINDOW_US", "0") or "0")
 for _c, _p in r.run_iter():
     n = time.perf_counter()
     if t_prev is not None:
@@ -133,7 +135,15 @@ def main() -> int:
                 if ratio is not None:
                     line += f" base {base_by_script[script]:.1f} ratio {ratio:.2f}"
                 print(line)
-                gated = ratio > RATIO_BUDGET if ratio is not None else y > BUDGET
+                # The ratio is like for like with upstream (compensated) only:
+                # the window re-sum is O(length) per bar where upstream's
+                # accumulator is O(1), so window-vs-upstream-compensated compares
+                # two algorithms and would fail every multi-sum catalogue script
+                # (bollinger 1.42 in CI, Plan 5 Task 2; ruling 2026-11-01).
+                if ratio is not None and mode == "compensated":
+                    gated = ratio > RATIO_BUDGET
+                else:
+                    gated = y > BUDGET
                 if gated and not sid.startswith("house/"):
                     bad = True
             if bad:
