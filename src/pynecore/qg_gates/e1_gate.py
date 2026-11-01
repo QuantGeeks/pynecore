@@ -64,6 +64,9 @@ def main() -> int:
     ap.add_argument("--further", required=True, help="glob over further export stems")
     ap.add_argument("--expect-window", type=int, required=True)
     ap.add_argument("--expect-compensated", type=int)
+    ap.add_argument("--warmup", type=int, default=39,
+                    help="the first bar scripts/e1_sma40.py can compute: its length - 1; "
+                         "a custom-range export carries TradingView's prior-history values there")
     a = ap.parse_args()
 
     fx = a.root / "fixtures" / "tradingview"
@@ -76,8 +79,8 @@ def main() -> int:
         manifest = fx / f"{stem}.manifest.json"
         meta = json.loads(manifest.read_text()) if manifest.is_file() else {}
         modes = _run_modes(bars, common.fixture_syminfo(meta))
-        c_ex, _c_r, n = common.compare_columns(cols[COL - 6], modes["compensated"], 0)
-        w_ex, _w_r, _ = common.compare_columns(cols[COL - 6], modes["window"], 0)
+        c_ex, _c_r, n = common.compare_columns(cols[COL - 6], modes["compensated"], a.warmup)
+        w_ex, _w_r, _ = common.compare_columns(cols[COL - 6], modes["window"], a.warmup)
         print(f"E1 {stem}: compensated exact {c_ex}/{n} window exact {w_ex}/{n}")
         return c_ex, w_ex, n
 
