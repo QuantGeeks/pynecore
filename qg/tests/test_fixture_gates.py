@@ -299,4 +299,8 @@ def __test_perf_ratio_gates_the_compensated_mode_only__():
     w = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_US": "3"})
     assert (w.returncode, w.stdout.strip().splitlines()[-1]) == (0, "PERF BUDGET PASS"), w.stdout
     c = __test_helper_gate(*args, env={"QG_PERF_INJECT_US": "3"})
-    assert (c.returncode, c.stdout.strip().splitlines()[-1]) == (1, "PERF BUDGET FAIL 2 scripts"), c.stdout
+    # n is hardware-dependent (gate_ta's base rides the 1.25 edge on a slow
+    # runner: 17.4/14.1 = 1.23 there, 12/8 = 1.5 locally) — the property is
+    # that the COMPENSATED ratio fails at least one script
+    assert c.returncode == 1, c.stdout
+    assert re.fullmatch(r"PERF BUDGET FAIL [12] scripts", c.stdout.strip().splitlines()[-1]), c.stdout
