@@ -241,6 +241,9 @@ def __test_fresh_state_restores_the_session_lists__():
         pass
     assert len(lib_syminfo.opening_hours) == 5           # the run installed Mon-Fri
     rs.discard(s)
-    rs.activate(rs.new_runner_state())
+    fresh = rs.new_runner_state()
+    rs.activate(fresh)
     assert lib_syminfo.opening_hours == [] and lib_syminfo.session_starts == [] and lib_syminfo.session_ends == []
     assert lib_syminfo._size_round_factor == 1.0
+    rs.discard(fresh)                                    # never leave a state current (see conftest below)
+    assert rs.active_state() is None
