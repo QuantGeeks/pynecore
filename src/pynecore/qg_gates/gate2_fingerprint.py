@@ -28,7 +28,7 @@ def _take(rs):
 def _run(rs, job, bars):
     s = rs.new_runner_state()
     g = rs.create_runner(s, script_path=job.script, ohlcv_iter=iter(bars),
-                         syminfo=common.default_syminfo(),
+                         syminfo=getattr(job, "syminfo", None) or common.default_syminfo(),
                          lossless_prices=True, lossless_volume=True).run_iter()
     for _ in g:
         pass
