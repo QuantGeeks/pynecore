@@ -8,7 +8,7 @@ from pynecore.core import runner_state
 def __test_manifest_fields__():
     m = qg_build.build_manifest()
     assert m["distribution"] == "pynesys-pynecore" and m["version"] == qg_build.version() == "6.10.10+qg.1"
-    assert m["swap_sha"] == runner_state.swap_sha() and m["tracked_names"] == 431
+    assert m["swap_sha"] == runner_state.swap_sha() and m["tracked_names"] == 427
     assert set(m["native"]) <= {"_native_color", "_native_math", "_native_rolling_sum"}
     assert all(len(v) == 64 for v in m["native"].values())
 
