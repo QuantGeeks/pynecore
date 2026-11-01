@@ -52,7 +52,14 @@ system work.)
 
 ## Gates
 
-Filled by Tasks 4 and 5: the §13.1 bit-identity gates (pristine, fingerprint, partners, inventory) and the golden, E1, drift and speed gates ship as the installed package `pynecore.qg_gates` and run in this fork's CI on synthetic data; the catalogue run over the real fixtures is Plan 1's private CI.
+`pynecore.qg_gates` (Task 4; Task 5 adds golden, E1, drift and speed), run by `qg/gates/run_all.sh` in the `qg-gates` workflow on synthetic data only — Layer A is this package's own `gate_ta`/`gate_draw` scripts on three seeds; the catalogue over Plan 1's `indicator-scripts` layout (fixtures and house scripts) is run only by the **private CI**, which passes `--root`.
+
+- **GATE1** proves co-resident runners equal their solo runs, batch and live: `GATE1 batch 0/<n> live 0/<n>`. Control: `--control` drops the per-step activate and must print `GATE1 CONTROL corrupted <k>/<n>` (exit 0 only when k > 0).
+- **GATE2** proves no unmanaged state survives a run (warm pass, then sequential and interleaved forms with a fresh state installed before each fingerprint, and a two-series data-dependence probe): `GATE2 steady 0 interleaved 0 data-dependent 0`. The walker records `typing` aliases as leaves and never walks `pynecore.transformers` (two rulings of 2026-10-31: the walk was otherwise `__pycache__`-dependent).
+- **GATE3** proves co-resident runners equal per-process pristine runs (`pristine.py`, plain PyneCore, one process each) over K=6 random-partner trials plus one trio trial per script: `GATE3 total mismatching runners 0/46` on Layer A.
+- **GATE4** pins the static state inventory: `GATE4 inventory unchanged (3587 paths)`. `qg/gates/inventory.json` is updated by re-running `gate4_inventory --write` in the Linux candidate image and committing it in the same PR — that diff is the person's review (spec §13.1); the CI never rewrites it.
+
+Negative controls in CI (`gates-negative` job): the gate1 control above, and the five adversarial injections (`qg/gates/adversarial/`, `ADV=A..E`) — a class counter, a closure cache, a dict inside a module-level tuple, an ALLCAPS module dict, a latent class attribute — each must be caught (measured: A by GATE1, B/C/D by GATE3, E by GATE2; `run_all` stops at the first failing gate).
 
 ## Releases and the service pin
 

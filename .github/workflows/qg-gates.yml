@@ -1,0 +1,45 @@
+name: qg-gates
+on:
+  pull_request: { branches: [qg/main] }
+  push: { branches: [qg/main] }
+  workflow_dispatch:
+permissions: { contents: read }
+env: { PYNE_SAVE_SCRIPT_TOML: "0" }
+jobs:
+  gates:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - run: pipx install uv==0.8.24
+      - run: uv venv .venv --python 3.12 && uv pip install --python .venv .
+      - run: cd "$RUNNER_TEMP" && bash "$GITHUB_WORKSPACE/qg/gates/run_all.sh" --fork-python "$GITHUB_WORKSPACE/.venv/bin/python"
+  gates-negative:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - run: pipx install uv==0.8.24
+      - run: uv venv .venv --python 3.12 && uv pip install --python .venv .
+      # Step 7(a): the no-swap control must corrupt -- gate1 --control exits 0
+      # only when it caught at least one corrupted runner, so this step fails
+      # exactly when the control finds nothing.
+      - run: cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/.venv/bin/python" -I -m pynecore.qg_gates.gate1_pristine --control
+      # Step 7(b): every injected bug must be caught -- run_all exits non-zero
+      # when a gate stops on it, so the exit code is inverted and the job fails
+      # when a bug passes.
+      - run: |
+          cd "$RUNNER_TEMP"
+          for X in A B C D E; do
+            rm -rf /tmp/a
+            uv venv -q /tmp/a && uv pip install -q --python /tmp/a "$GITHUB_WORKSPACE"
+            "$GITHUB_WORKSPACE/.venv/bin/python" -I "$GITHUB_WORKSPACE/qg/gates/adversarial/inject.py" --site-packages /tmp/a/lib/python3.12/site-packages
+            if ADV=$X bash "$GITHUB_WORKSPACE/qg/gates/run_all.sh" --fork-python /tmp/a/bin/python; then
+              echo "ADV=$X was NOT caught"
+              exit 1
+            fi
+          done
