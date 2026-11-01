@@ -73,11 +73,11 @@ def __test_golden_pass_and_shift_fail__(tmp_path):
 def __test_drift_identical_and_mode_control__():
     py = sys.executable
     p = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py, "--require-identical")
-    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.2 vs 6.10.10+qg.2: 0/7 jobs differ []")
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.3 vs 6.10.10+qg.3: 0/7 jobs differ []")
     q = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py,
                            "--candidate-env", "PYNE_SUM_MODE=window", "--require-identical")
     assert q.returncode == 1
-    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.2 vs 6.10.10+qg.2: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
+    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.3 vs 6.10.10+qg.3: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
 
 
 def __test_perf_budget_and_injection__():
@@ -247,3 +247,42 @@ def __test_fresh_state_restores_the_session_lists__():
     assert lib_syminfo._size_round_factor == 1.0
     rs.discard(fresh)                                    # never leave a state current (see conftest below)
     assert rs.active_state() is None
+
+
+def __test_helper_write_prior(fx: Path, stem: str, seed: int, scale: float = 1.0) -> None:
+    """An export taken over a custom range: TradingView computed the sma40 from
+    history before the window, so its first 39 cells carry prior-history values
+    where the script on the export's own bars is na (Task 8's measured case)."""
+    bars = common.synthetic_bars(seed, 2000)
+    hl2 = [(b.high + b.low) / 2 for b in bars]
+    lines = []
+    for i, b in enumerate(bars):
+        v = (repr(500.0 + i) if i < 39 else repr(sum(hl2[i - 39:i + 1]) / 40 * scale))
+        lines.append(f"{b.timestamp // 1000},{b.open!r},{b.high!r},{b.low!r},{b.close!r},{b.volume!r},{v}\n")
+    (fx / f"{stem}.csv.gz").write_bytes(gzip.compress((HDR + "".join(lines)).encode(), mtime=0))
+    (fx / f"{stem}.manifest.json").write_text(json.dumps({"file": f"{stem}.csv.gz", "kind": "script"}))
+
+
+def __test_e1_compares_from_the_first_computable_bar__(tmp_path):
+    """ --warmup 39 (the default): a custom-range export whose first 39 cells
+    carry TradingView's prior-history values agrees; --warmup 0 (the old,
+    explicit) refuses it for exactly those 39 bars """
+    fx = tmp_path / "fixtures" / "tradingview"
+    fx.mkdir(parents=True)
+    __test_helper_write(fx, "ref", 11)
+    __test_helper_write_prior(fx, "more_a", 12)
+    __test_helper_write_prior(fx, "more_b", 13)
+    d = tmp_path / "standard" / "sma40"
+    d.mkdir(parents=True)
+    (d / "sma40.py").write_text((Path(common.__file__).parent / "scripts" / "e1_sma40.py").read_text())
+    (d / "manifest.toml").write_text("")
+    p = __test_helper_gate("pynecore.qg_gates.e1_gate", "--root", str(tmp_path), "--reference", "ref",
+                           "--further", "more_*", "--expect-window", "1961")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "E1 more_a: compensated exact " in p.stdout and "window exact 1961/1961" in p.stdout
+    assert p.stdout.strip().splitlines()[-1] == "E1 GATE (§9.2): PASSED"
+    q = __test_helper_gate("pynecore.qg_gates.e1_gate", "--root", str(tmp_path), "--reference", "ref",
+                           "--further", "more_*", "--expect-window", "1961", "--warmup", "0")
+    assert q.returncode == 0, q.stdout + q.stderr
+    assert "window exact 1961/2000" in q.stdout  # the 39 prior-history bars counted as mismatches
+    assert q.stdout.strip().splitlines()[-1] == "E1 GATE (§9.2): 0 of 2 further exports agree; window mode stays off by default"
