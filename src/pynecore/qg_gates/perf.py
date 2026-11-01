@@ -109,7 +109,7 @@ def main() -> int:
                 continue
             bars = common.synthetic_bars(7, 8580) if LAYER_A_DIR in job.script.parents else job.bars
             data = Path(td) / f"{job.id.replace('/', '_')}.pkl"
-            data.write_bytes(pickle.dumps((bars, common.default_syminfo())))
+            data.write_bytes(pickle.dumps((bars, job.syminfo or common.default_syminfo())))
             scripts.append((job.script.stem if LAYER_A_DIR in job.script.parents
                             else job.id.rsplit("@", 1)[0], job.script, data))
 

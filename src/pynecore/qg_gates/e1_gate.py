@@ -36,13 +36,13 @@ def _csv_for(fx: Path, stem: str) -> Path:
     return fx / (json.loads(manifest.read_text())["file"] if manifest.is_file() else f"{stem}.csv.gz")
 
 
-def _run_modes(bars) -> dict[str, list]:
+def _run_modes(bars, syminfo=None) -> dict[str, list]:
     """The script in each sum mode, each in its own pristine process; the rows'
     plot values by name (repr round-trips a float exactly)."""
     out: dict[str, list] = {}
     with tempfile.TemporaryDirectory() as td:
         data = Path(td) / "d.pkl"
-        common.write_data(data, bars)
+        common.write_data(data, bars, syminfo)
         for mode in ("compensated", "window"):
             rows_pkl = Path(td) / f"o_{mode}.pkl"
             p = subprocess.run([sys.executable, "-I", str(PRISTINE), "--script", str(SCRIPT),
@@ -73,7 +73,9 @@ def main() -> int:
 
     def exacts(stem: str) -> tuple[int, int, int, int]:
         bars, _headers, cols = common.load_tv_export(_csv_for(fx, stem))
-        modes = _run_modes(bars)
+        manifest = fx / f"{stem}.manifest.json"
+        meta = json.loads(manifest.read_text()) if manifest.is_file() else {}
+        modes = _run_modes(bars, common.fixture_syminfo(meta))
         c_ex, _c_r, n = common.compare_columns(cols[COL - 6], modes["compensated"], 0)
         w_ex, _w_r, _ = common.compare_columns(cols[COL - 6], modes["window"], 0)
         print(f"E1 {stem}: compensated exact {c_ex}/{n} window exact {w_ex}/{n}")

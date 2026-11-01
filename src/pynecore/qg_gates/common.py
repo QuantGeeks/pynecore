@@ -15,11 +15,13 @@ from pynecore.lib import label, line, box
 
 
 class Job(NamedTuple):
-    """One gate job: a script, the bars it runs on, and a stable id."""
+    """One gate job: a script, the bars it runs on, a stable id, and (for
+    fixture bars) the SymInfo the fixture's manifest derives."""
 
     id: str
     script: Path
     bars: list[OHLCV]
+    syminfo: object = None
 
 
 def synthetic_bars(seed: int, n: int = 600) -> list[OHLCV]:
@@ -71,9 +73,9 @@ def default_syminfo():
     )
 
 
-def write_data(path: Path, events: list[OHLCV]) -> None:
+def write_data(path: Path, events: list[OHLCV], syminfo=None) -> None:
     """Pickle ``(events, syminfo)`` for :mod:`pynecore.qg_gates.pristine`."""
-    Path(path).write_bytes(pickle.dumps((events, default_syminfo())))
+    Path(path).write_bytes(pickle.dumps((events, syminfo or default_syminfo())))
 
 
 def layer_a_jobs() -> list[Job]:
@@ -83,18 +85,49 @@ def layer_a_jobs() -> list[Job]:
             [Job(f"gate_draw@{s}", scripts / "gate_draw.py", synthetic_bars(s)) for s in (1, 2, 3)])
 
 
+BASE_HEADERS = ("time", "open", "high", "low", "close", "Volume")
+
+
 def _fixture_bars(csv: Path, n: int = 600) -> list[OHLCV]:
     import csv as _csv
     import gzip
     out: list[OHLCV] = []
     with gzip.open(csv, "rt", newline="") as f:
-        reader = _csv.DictReader(f)
-        for rec in reader:
+        for rec in _csv.DictReader(f):
             out.append(OHLCV(int(rec["time"]) * 1000, float(rec["open"]), float(rec["high"]),
                              float(rec["low"]), float(rec["close"]), float(rec["Volume"])))
             if len(out) == n:
                 break
     return out
+
+
+def fixture_syminfo(manifest: dict):
+    """The SymInfo a fixture runs with: the 24/7 default, with the session and
+    tv_symbol the fixture's manifest declares (an extended export must run with
+    the extended session — the default SymInfo mismatches VWAP ext by ~16k
+    values per plot; ruling 2026-11-01, Plan 5 review X3).
+
+    ``session``: ``regular`` (Mon-Fri 09:30-16:00), ``extended`` (Mon-Fri
+    04:00-20:00) or ``instrument``/absent (the 24/7 default).  ``tv_symbol``
+    ``PREFIX:SYMBOL`` sets prefix and ticker.
+    """
+    from datetime import time as dtime
+    from pynecore.core.syminfo import SymInfoInterval, SymInfoSession
+    si = default_syminfo()
+    session = (manifest or {}).get("session")
+    if session in ("regular", "extended"):
+        start, end = (dtime(9, 30), dtime(16, 0)) if session == "regular" else (dtime(4, 0), dtime(20, 0))
+        si.opening_hours = [SymInfoInterval(day=d, start=start, end=end) for d in range(5)]
+        si.session_starts = [SymInfoSession(day=d, time=start) for d in range(5)]
+        si.session_ends = [SymInfoSession(day=d, time=end) for d in range(5)]
+    symbol = (manifest or {}).get("tv_symbol")
+    if symbol:
+        prefix, _sep, ticker = symbol.rpartition(":")
+        if prefix:
+            si.prefix, si.ticker = prefix, ticker
+        else:
+            si.ticker = symbol
+    return si
 
 
 def catalogue_jobs(root: Path) -> list[Job]:
@@ -122,16 +155,21 @@ def catalogue_jobs(root: Path) -> list[Job]:
             if "request.security" in script.read_text():
                 print(f"QG-GATES: skipped (request.security, spec §4.7): {dir_name}/{d.name}")
                 continue
+            if (d / f"{d.name}_security.py").is_file() or "indicator_service" in script.read_text():
+                # the shared form runs only inside the service (Senti today,
+                # Plan 5's session_levels later); ruling 2026-11-01, X1
+                print(f"QG-GATES: skipped {dir_name}/{d.name}: shared form")
+                continue
             scripts.append((f"{dir_name}/{d.name}", script))
-    fixtures: list[tuple[str, Path]] = []
+    fixtures: list[tuple[str, Path, dict]] = []
     for m in sorted(fx.glob("*.manifest.json")):
         meta = json.loads(m.read_text())
         if meta.get("kind") in ("script", "feed"):
-            fixtures.append((m.name[:-len(".manifest.json")], m.parent / meta["file"]))
+            fixtures.append((m.name[:-len(".manifest.json")], m.parent / meta["file"], meta))
         if len(fixtures) == 3:
             break
-    return [Job(f"{fid}@{stem}", script, _fixture_bars(csv))
-            for fid, script in scripts for stem, csv in fixtures]
+    return [Job(f"{fid}@{stem}", script, _fixture_bars(csv), fixture_syminfo(meta))
+            for fid, script in scripts for stem, csv, meta in fixtures]
 
 
 def _start(job: Job, events):
@@ -139,7 +177,8 @@ def _start(job: Job, events):
     from pynecore.core import runner_state as rs
     s = rs.new_runner_state()
     r = rs.create_runner(s, script_path=job.script, ohlcv_iter=iter(events),
-                         syminfo=default_syminfo(), lossless_prices=True, lossless_volume=True)
+                         syminfo=job.syminfo or default_syminfo(),
+                         lossless_prices=True, lossless_volume=True)
     return s, r.run_iter()
 
 
@@ -205,17 +244,28 @@ def mismatching(jobs: list[Job], solo, together) -> list[str]:
 def load_tv_export(path: Path) -> tuple[list[OHLCV], list[str], list[list[float | None]]]:
     """A TradingView "Download chart data" export: the bars (ms timestamps), the
     plot-column titles from index 6 on, and each column's values (``None`` = the
-    empty cell) — ``cmp.load_tv`` reduced to the fork's fixed layout."""
+    empty cell) — ``cmp.load_tv`` reduced to the fork's fixed layout.  The six
+    bar fields are read BY HEADER NAME — the VWAP exports carry ``Volume`` at
+    index 8, Supertrend at 7; never column 5 — and rows whose open/high/low/
+    close are empty (an Ichimoku export's forward rows) are dropped before the
+    bars and the columns are built (ruling 2026-11-01, Plan 5 review X2)."""
     import csv as _csv
     import gzip
     p = Path(path)
     with (gzip.open if p.name.endswith(".gz") else open)(p, "rt", newline="") as f:
         rows = list(_csv.reader(f))
     head, data = rows[0], rows[1:]
-    bars = [OHLCV(int(r[0]) * 1000, float(r[1]), float(r[2]), float(r[3]),
-                  float(r[4]), float(r[5])) for r in data]
+    at = {name: head.index(name) for name in BASE_HEADERS if name in head}
+
+    def _num(cell: str) -> float | None:
+        return None if cell == "" else float(cell)
+
+    keep = [r for r in data if all(r[at[f]] != "" for f in ("open", "high", "low", "close"))]
+    bars = [OHLCV(int(r[at["time"]]) * 1000, float(r[at["open"]]), float(r[at["high"]]),
+                  float(r[at["low"]]), float(r[at["close"]]), float(r[at["Volume"]]))
+            for r in keep]
     headers = head[6:]
-    cols = [[None if r[6 + i] == "" else float(r[6 + i]) for r in data]
+    cols = [[None if r[6 + i] == "" else float(r[6 + i]) for r in keep]
             for i in range(len(headers))]
     return bars, headers, cols
 
@@ -243,12 +293,14 @@ def compare_columns(tv: list[float | None], ours: list[float], warmup: int) -> t
     return exact, rel9, n
 
 
-def _run_swapped(script: Path, bars, inputs: dict | None = None, sum_mode: str = "compensated") -> list[tuple]:
+def _run_swapped(script: Path, bars, inputs: dict | None = None, sum_mode: str = "compensated",
+                 syminfo=None) -> list[tuple]:
     """Run one script once under its own state (the gates' pattern): fresh state,
     per-state script import, one row per bar, baseline restored on discard."""
     from pynecore.core import runner_state as rs
     s = rs.new_runner_state(sum_mode=sum_mode)
-    kwargs = dict(script_path=script, ohlcv_iter=iter(bars), syminfo=default_syminfo(),
+    kwargs = dict(script_path=script, ohlcv_iter=iter(bars),
+                  syminfo=syminfo or default_syminfo(),
                   lossless_prices=True, lossless_volume=True)
     if inputs:
         kwargs["inputs"] = inputs

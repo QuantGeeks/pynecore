@@ -86,3 +86,84 @@ def __test_perf_budget_and_injection__():
     assert __test_helper_gate(*args).stdout.strip().splitlines()[-1] == "PERF BUDGET PASS"
     q = __test_helper_gate(*args, env={"QG_PERF_INJECT_US": "600"})
     assert (q.returncode, q.stdout.strip().splitlines()[-1]) == (1, "PERF BUDGET FAIL 2 scripts")
+
+
+def __test_catalogue_skips_the_shared_form__(tmp_path, capsys):
+    """ X1: a directory with <id>_security.py, or whose <id>.py imports
+    indicator_service, is skipped with one line: the shared form runs only
+    inside the service """
+    r = __test_helper_root(tmp_path)
+    for sid, body in (("senti", '"""\n@pyne\n"""\n'), ("levels", "import indicator_service\n")):
+        d = r / "standard" / sid
+        d.mkdir(parents=True)
+        (d / f"{sid}.py").write_text(body)
+        (d / "manifest.toml").write_text("")
+    (r / "standard" / "senti" / "senti_security.py").write_text("# the shared form\n")
+    capsys.readouterr()
+    jobs = common.catalogue_jobs(r)
+    assert not [j.id for j in jobs if j.id.startswith(("standard/senti@", "standard/levels@"))]
+    out = capsys.readouterr().out
+    assert "QG-GATES: skipped standard/senti: shared form\n" in out
+    assert "QG-GATES: skipped standard/levels: shared form\n" in out
+    assert [j.id for j in jobs if j.id.startswith("standard/sma40@")]  # the control: others run
+
+
+def __test_load_tv_export_names_volume_and_drops_empty_rows__(tmp_path):
+    """ X2: Volume is read by header name (here at index 8), and rows with empty
+    OHLC — an Ichimoku export's forward rows — are dropped """
+    import gzip as _gzip
+    f = tmp_path / "late_volume.csv.gz"
+    head = "time,open,high,low,close,anchor,signal,vwap,Volume\n"  # plots at 6-7, Volume at 8
+    good = [(1700000000 + 60 * i, 1 + i, 2 + i, 0.5 + i, 1.5 + i, 30.0 + i, 20.0 + i, 10.0 + i,
+             100.0 + i) for i in range(4)]
+    rows = [",".join(repr(x) for x in row) for row in good]
+    rows.append(f"{1700000240},,,,," + "6.6" + ",8.8,9.9,7.7")  # forward row: OHLC empty
+    f.write_bytes(_gzip.compress((head + "\n".join(rows) + "\n").encode(), mtime=0))
+    bars, headers, cols = common.load_tv_export(f)
+    assert [b.volume for b in bars] == [100.0, 101.0, 102.0, 103.0]  # by NAME, not index 5
+    assert len(bars) == 4                                                            # the empty row dropped
+    assert headers == ["signal", "vwap", "Volume"]          # the columns from index 6 on, raw order
+    assert cols[0] == [20.0, 21.0, 22.0, 23.0]              # every column dropped the empty row
+    assert cols[1] == [10.0, 11.0, 12.0, 13.0]
+    assert cols[2] == [100.0, 101.0, 102.0, 103.0]          # the late Volume stays addressable at raw 8
+    assert not any(9.9 in c or 7.7 in c for c in cols)      # the dropped row's cells are gone
+
+
+def __test_fixture_syminfo_derives_the_session__(tmp_path):
+    """ X3: the fixture manifest's session and tv_symbol derive the SymInfo; the
+    default stays the 24/7 instrument session """
+    from datetime import time as dtime
+    base = common.fixture_syminfo({})
+    ext = common.fixture_syminfo({"session": "extended", "tv_symbol": "AMEX:SPY"})
+    reg = common.fixture_syminfo({"session": "regular"})
+    assert ext.prefix == "AMEX" and ext.ticker == "SPY"
+    assert (ext.opening_hours[0].start, ext.opening_hours[0].end) == (dtime(4, 0), dtime(20, 0))
+    assert (reg.opening_hours[0].start, reg.opening_hours[0].end) == (dtime(9, 30), dtime(16, 0))
+    assert len(reg.opening_hours) == 5                                    # Mon-Fri, not the default 7 days
+    assert (base.opening_hours[0].start, len(base.opening_hours)) == (dtime(0, 0), 7)
+    jobs = common.catalogue_jobs(__test_helper_root(tmp_path))            # the control: jobs carry it
+    assert all(j.syminfo is not None for j in jobs)
+
+
+def __test_golden_offset_twentyfive__(tmp_path):
+    """ X4: shift is minus the plot offset — the export's row i holds the value
+    the engine computes at bar i+25; shift 25 passes, 24 and the wrong sign fail """
+    import gzip as _gzip
+    r = __test_helper_root(tmp_path)
+    fx = r / "fixtures" / "tradingview"
+    bars = common.synthetic_bars(21, 2000)
+    hl2 = [(b.high + b.low) / 2 for b in bars]
+    eng = [None if i < 39 else sum(hl2[i - 39:i + 1]) / 40 for i in range(len(bars))]
+    lines = [f"{b.timestamp // 1000},{b.open!r},{b.high!r},{b.low!r},{b.close!r},{b.volume!r},"
+             f"{'' if (i < 14 or i + 25 >= len(eng) or eng[i + 25] is None) else repr(eng[i + 25])}\n"
+             for i, b in enumerate(bars)]
+    (fx / "lag.csv.gz").write_bytes(_gzip.compress((HDR + "".join(lines)).encode(), mtime=0))
+    (fx / "lag.manifest.json").write_text(json.dumps({"file": "lag.csv.gz", "kind": "script"}))
+    for shift, code, last in ((25, 0, "GOLDEN PASS 1 columns"),
+                              (24, 1, "GOLDEN FAIL 1 of 1 columns"),
+                              (-25, 1, "GOLDEN FAIL 1 of 1 columns")):
+        spec = tmp_path / f"lag{shift}.json"
+        spec.write_text(json.dumps([{"script": "standard/sma40", "stem": "lag",
+                                     "columns": [{"tv_index": 6, "plot": "sma40", "shift": shift}]}]))
+        p = __test_helper_gate("pynecore.qg_gates.golden", "--root", str(r), "--spec", str(spec))
+        assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (code, last), (shift, p.stdout)
