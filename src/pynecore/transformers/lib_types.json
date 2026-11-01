@@ -7190,6 +7190,10 @@
    "kind": "value",
    "ty": "o"
   },
+  "syminfo.extended_session_corrections": {
+   "kind": "value",
+   "ty": "o"
+  },
   "syminfo.industry": {
    "kind": "value",
    "ty": "s"
@@ -7270,6 +7274,14 @@
    "kind": "value",
    "ty": "o:lib#Session"
   },
+  "syminfo.regular_hours": {
+   "kind": "value",
+   "ty": "o"
+  },
+  "syminfo.regular_session_corrections": {
+   "kind": "value",
+   "ty": "o"
+  },
   "syminfo.root": {
    "kind": "value",
    "ty": "s"
@@ -7282,7 +7294,15 @@
    "kind": "value",
    "ty": "o:lib#Session"
   },
+  "syminfo.session_corrections": {
+   "kind": "value",
+   "ty": "o"
+  },
   "syminfo.session_ends": {
+   "kind": "value",
+   "ty": "o"
+  },
+  "syminfo.session_schedules": {
    "kind": "value",
    "ty": "o"
   },
