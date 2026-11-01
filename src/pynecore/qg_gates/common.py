@@ -200,3 +200,60 @@ def mismatching(jobs: list[Job], solo, together) -> list[str]:
         if a is None or a != b:
             bad.append(job.id)
     return bad
+
+
+def load_tv_export(path: Path) -> tuple[list[OHLCV], list[str], list[list[float | None]]]:
+    """A TradingView "Download chart data" export: the bars (ms timestamps), the
+    plot-column titles from index 6 on, and each column's values (``None`` = the
+    empty cell) — ``cmp.load_tv`` reduced to the fork's fixed layout."""
+    import csv as _csv
+    import gzip
+    p = Path(path)
+    with (gzip.open if p.name.endswith(".gz") else open)(p, "rt", newline="") as f:
+        rows = list(_csv.reader(f))
+    head, data = rows[0], rows[1:]
+    bars = [OHLCV(int(r[0]) * 1000, float(r[1]), float(r[2]), float(r[3]),
+                  float(r[4]), float(r[5])) for r in data]
+    headers = head[6:]
+    cols = [[None if r[6 + i] == "" else float(r[6 + i]) for r in data]
+            for i in range(len(headers))]
+    return bars, headers, cols
+
+
+def compare_columns(tv: list[float | None], ours: list[float], warmup: int) -> tuple[int, int, int]:
+    """``cmp.stats`` kept, reduced to ``(exact, rel9, n)`` over the bars from
+    ``warmup`` on where either side has a value: exact is float64 equality,
+    rel9 is ``d <= 1e-9 * max(|a|, |b|)`` or ``d <= 1e-12``, and one na against
+    one value fails both (a nan on our side is na)."""
+    exact = rel9 = n = 0
+    for i in range(warmup, min(len(tv), len(ours))):
+        a, b = tv[i], ours[i]
+        if isinstance(b, float) and b != b:
+            b = None
+        if a is None and b is None:
+            continue
+        n += 1
+        if a is None or b is None:
+            continue
+        if a == b:
+            exact += 1
+            rel9 += 1
+        elif abs(a - b) <= 1e-9 * max(abs(a), abs(b)) or abs(a - b) <= 1e-12:
+            rel9 += 1
+    return exact, rel9, n
+
+
+def _run_swapped(script: Path, bars, inputs: dict | None = None, sum_mode: str = "compensated") -> list[tuple]:
+    """Run one script once under its own state (the gates' pattern): fresh state,
+    per-state script import, one row per bar, baseline restored on discard."""
+    from pynecore.core import runner_state as rs
+    s = rs.new_runner_state(sum_mode=sum_mode)
+    kwargs = dict(script_path=script, ohlcv_iter=iter(bars), syminfo=default_syminfo(),
+                  lossless_prices=True, lossless_volume=True)
+    if inputs:
+        kwargs["inputs"] = inputs
+    g = rs.create_runner(s, **kwargs).run_iter()
+    rs.activate(s)
+    rows = [(c, dict(p)) for c, p in g]
+    rs.discard(s)
+    return rows

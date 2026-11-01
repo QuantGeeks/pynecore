@@ -15,7 +15,8 @@ jobs:
         with: { python-version: "3.12" }
       - run: pipx install uv==0.8.24
       - run: uv venv .venv --python 3.12 && uv pip install --python .venv .
-      - run: cd "$RUNNER_TEMP" && bash "$GITHUB_WORKSPACE/qg/gates/run_all.sh" --fork-python "$GITHUB_WORKSPACE/.venv/bin/python"
+      - run: uv venv .base --python 3.12 && uv pip install --python .base 'pynesys-pynecore @ git+https://github.com/PyneSys/pynecore@v6.10.10'
+      - run: cd "$RUNNER_TEMP" && bash "$GITHUB_WORKSPACE/qg/gates/run_all.sh" --fork-python "$GITHUB_WORKSPACE/.venv/bin/python" --upstream-python "$GITHUB_WORKSPACE/.base/bin/python"
   gates-negative:
     runs-on: ubuntu-24.04
     steps:
