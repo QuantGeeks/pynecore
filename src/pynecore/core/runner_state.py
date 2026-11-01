@@ -62,6 +62,12 @@ _NOT_STATE = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType, t
               types.MethodType)
 _TYPE_EXCLUSIONS = ("Logger", "StreamHandler", "TypeVar", "_Feature", "ForkServerContext",
                     "SpawnContext", "Color", "UnionType")
+#: Process-level console handles, never per-runner state — and rich-dependent,
+#: so without them the tracked count depends on which extras an environment
+#: installed (ruling 2026-11-01: the pin's rich-less install counted 428, the
+#: ``[dev,cli]`` dev install 431; excluded, every environment counts 427).
+_NAME_EXCLUSIONS = {("pynecore.lib.log", n) for n in
+                    ("rich", "_log_console", "_log_console_width", "_stdout_is_tty", "handler")}
 
 
 def _tracked() -> list[tuple[types.ModuleType, str]]:
@@ -72,6 +78,8 @@ def _tracked() -> list[tuple[types.ModuleType, str]]:
             continue
         for k, v in vars(mod).items():
             if k.startswith("__") or k.isupper() or isinstance(v, _NOT_STATE):
+                continue
+            if (name, k) in _NAME_EXCLUSIONS:
                 continue
             if type(v).__name__ in _TYPE_EXCLUSIONS:
                 continue

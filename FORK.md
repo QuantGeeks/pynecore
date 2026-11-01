@@ -68,4 +68,24 @@ Negative controls in CI (`gates-negative` job): the gate1 control above, and the
 
 ## Releases and the service pin
 
-Filled by Task 6: release tag `6.10.10-qg.1` (package version `6.10.10+qg.1`, PEP 440), never a GitHub Release (it triggers upstream's PyPI workflow), and the indicator service's pin `pynesys-pynecore==6.10.10+qg.1` via `[tool.uv.sources]` on tag `6.10.10-qg.1`.
+The release tag is `6.10.10-qg.1`, the package version `6.10.10+qg.1` (PEP 440;
+spec §4.9). Never a GitHub Release (it triggers upstream's PyPI workflow); the
+tag push and the rebase force-push are operator steps — `UPGRADING.md` is the
+procedure, step by step.
+
+The service pins the tag exactly (Task 6):
+
+```toml
+[project]
+dependencies = ["pynesys-pynecore==6.10.10+qg.1"]
+
+[tool.uv.sources]
+pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.1" }
+```
+
+`uv lock` records the tag's commit sha; the image needs a C compiler (Cython
+builds the native extensions on install). The worker calls
+`pynecore.qg_build.assert_build(<the image's expected-manifest file>)` at start
+(spec §13.1 item 1): a wheel or interpreter that is not the one the manifest was
+produced from refuses to run. `python -m pynecore.qg_build` prints that manifest
+(sorted keys, indent 2).
