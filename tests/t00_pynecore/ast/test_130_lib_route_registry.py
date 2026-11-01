@@ -92,8 +92,12 @@ def __test_no_pyne_module_outside_the_lib__():
     both are correct whatever a cached script was compiled against.
     """
     root = Path(pynecore.__file__).parent
+    # QuantGeeks fork: the qg_gates subtree is excluded -- its Layer A scripts are
+    # @pyne modules run by file path (never imported through the registry), so
+    # nothing under it needs a route (Plan 2 Task 4; Review Focus 5).
     pyne = [str(path.relative_to(root)) for path in sorted(root.rglob('*.py'))
             if 'lib' not in path.relative_to(root).parts[:1]
+            and 'qg_gates' not in path.relative_to(root).parts
             and source_starts_with_pyne(path.read_bytes()[:4096])]
     assert not pyne, (f"@pyne modules outside pynecore/lib: {pyne} -- record their callees in "
                       "scripts/lib_type_collector.py and route them from the registry")

@@ -41,6 +41,7 @@ system work.)
 |---|---|---|---|
 | feat(math): window re-sum mode for math.sum | spec §9.2 E1; default off until the §9.2 gate (Task 5) | not filed (sev, 2026-10-31); write-up qg/upstream/e1-window-resum.md | carried, default off |
 | feat(core): per-runner state for co-resident runners | spec §4.2, §4.9 | not filed (sev, 2026-10-31); write-up qg/upstream/per-runner-state.md | carried |
+| test(ast): the lib-route registry scan skips the fork's qg_gates scripts | gates package layout (Plan 2 Task 4; Review Focus 5) | not filed (sev, 2026-10-31) | carried |
 
 ## Engine findings without a patch
 
