@@ -42,6 +42,7 @@ system work.)
 | feat(math): window re-sum mode for math.sum | spec §9.2 E1; default off until the §9.2 gate (Task 5) | not filed (sev, 2026-10-31); write-up qg/upstream/e1-window-resum.md | carried, default off |
 | feat(core): per-runner state for co-resident runners | spec §4.2, §4.9 | not filed (sev, 2026-10-31); write-up qg/upstream/per-runner-state.md | carried |
 | test(ast): the lib-route registry scan skips the fork's qg_gates scripts | gates package layout (Plan 2 Task 4; Review Focus 5) | not filed (sev, 2026-10-31) | carried |
+| fix(lib): syminfo mirrors every SymInfo slot at import | spec §4.2, §13.1 gate 2 (Plan 2 Task 7) | not filed (sev, 2026-10-31); write-up qg/upstream/syminfo-slots-at-import.md | carried |
 
 ## Engine findings without a patch
 
@@ -55,20 +56,20 @@ system work.)
 
 `pynecore.qg_gates` (Task 4; Task 5 adds golden, E1, drift and speed), run by `qg/gates/run_all.sh` in the `qg-gates` workflow on synthetic data only — Layer A is this package's own `gate_ta`/`gate_draw` scripts on three seeds; the catalogue over Plan 1's `indicator-scripts` layout (fixtures and house scripts) is run only by the **private CI**, which passes `--root`.
 
-- **GATE1** proves co-resident runners equal their solo runs, batch and live: `GATE1 batch 0/<n> live 0/<n>`. Control: `--control` drops the per-step activate and must print `GATE1 CONTROL corrupted <k>/<n>` (exit 0 only when k > 0).
+- **GATE1** proves co-resident runners equal their solo runs, batch and live: `GATE1 batch 0/7 live 0/7`. Control: `--control` drops the per-step activate and must print `GATE1 CONTROL corrupted <k>/<n>` (exit 0 only when k > 0).
 - **GATE2** proves no unmanaged state survives a run (warm pass, then sequential and interleaved forms with a fresh state installed before each fingerprint, and a two-series data-dependence probe): `GATE2 steady 0 interleaved 0 data-dependent 0`. The walker records `typing` aliases as leaves and never walks `pynecore.transformers` (two rulings of 2026-10-31: the walk was otherwise `__pycache__`-dependent).
 - **GATE3** proves co-resident runners equal per-process pristine runs (`pristine.py`, plain PyneCore, one process each) over K=6 random-partner trials plus one trio trial per script: `GATE3 total mismatching runners 0/46` on Layer A.
 - **GATE4** pins the static state inventory: `GATE4 inventory unchanged (3587 paths)`. `qg/gates/inventory.json` is updated by re-running `gate4_inventory --write` in the Linux candidate image and committing it in the same PR — that diff is the person's review (spec §13.1); the CI never rewrites it.
 
 - **GOLDEN** (Task 5; private CI with `--root` and Plan 1 Task 12's `golden.json`): our values against a TradingView export, column by column — the spec is a JSON list of `{"script","stem","columns":[{"tv_index","plot","shift"}]}` with optional `inputs` (default `{}`), `sum_mode` (default `"compensated"`, ruling 9) and `warmup_bars` (default 1500, the tvtruth method); the column mapping is written once by `tv_index`, the E2 `shift` is applied in the harness.  Per column `GOLDEN <script> <stem> [<tv_index>→<plot>]: exact <a>/<n> rel9 <b>/<n>`; a column passes iff rel9 covers every compared bar; `GOLDEN PASS <c> columns` / `GOLDEN FAIL <k> of <c> columns`.
 - **E1** (Task 5; private CI): `e1_gate --root --reference <stem> --further '<glob>' --expect-window 41301 --expect-compensated 428` runs `scripts/e1_sma40.py` in both sum modes on each export's own bars (each mode its own process) and compares with column index 6.  The reproduction holds on the reference when the window mode is exact on every bar and the compensated machine is not (`E1 REPRODUCTION FAIL …`, exit 1, otherwise); the gate prints `E1 GATE (§9.2): PASSED` once **two further exports agree** — until then `… <k> of 2 further exports agree; window mode stays off by default` (both exit 0): the window mode becomes the default only after PASSED (README ruling 9).
-- **DRIFT** (Task 5; fork CI with `--upstream-python`): every Layer A job batch, compensated, via `pristine.py` under each interpreter — the baseline is upstream `v6.10.10`, whose install never calls `set_sum_mode`.  `DRIFT 6.10.10+qg.1 vs 6.10.10: 0/6 jobs differ []`; `--require-identical` fails on any difference: the fork's default build is upstream's.
+- **DRIFT** (Task 5; fork CI with `--upstream-python`): every Layer A job batch, compensated, via `pristine.py` under each interpreter — the baseline is upstream `v6.10.10`, whose install never calls `set_sum_mode`.  `DRIFT 6.10.10+qg.2 vs 6.10.10: 0/7 jobs differ []`; `--require-identical` fails on any difference: the fork's default build is upstream's.
 - **PERF** (Task 5): µs/bar per script and mode — the median of 5 per-run medians, the first 200 bars skipped, one process per run.  Budget **25.5 µs/bar = 1.5 × 17.0**, the slowest median of the 25 standard scripts (ichimoku, SPY RTH 1m, `proof/catalogue/REPORT.md`); Layer A runs on `synthetic_bars(7, 8580)`; `house/` scripts are reported only (a heavy house script is the governor's case, spec §4.2).  Gated (ruling 2026-11-01): with `--baseline-python`, a script fails when any mode's **ratio r > 1.25** against upstream measured in the same run — the only comparison that means anything on unknown hardware — and the absolute y is reported only; without a baseline, the absolute 25.5 gates.  `run_all.sh` and CI always pass the baseline, so CI gates the ratio.  `PERF <id> <mode> <y> us/bar (budget 25.5) [base <x> ratio <r>]`, `PERF activate p50 <x> us (60 states)` (reference 100 µs, `proof/scale/REPORT.md`, not gated), `PERF BUDGET PASS` / `PERF BUDGET FAIL <k> scripts`.  `QG_PERF_INJECT_US=<n>` busy-waits n µs per bar under the measured interpreter only (the control).
 Negative controls in CI (`gates-negative` job): the gate1 control above, and the five adversarial injections (`qg/gates/adversarial/`, `ADV=A..E`) — a class counter, a closure cache, a dict inside a module-level tuple, an ALLCAPS module dict, a latent class attribute — each must be caught (measured: A by GATE1, B/C/D by GATE3, E by GATE2; `run_all` stops at the first failing gate).
 
 ## Releases and the service pin
 
-The release tag is `6.10.10-qg.1`, the package version `6.10.10+qg.1` (PEP 440;
+The release tag is `6.10.10-qg.2`, the package version `6.10.10+qg.2` (PEP 440;
 spec §4.9). Never a GitHub Release (it triggers upstream's PyPI workflow); the
 tag push and the rebase force-push are operator steps — `UPGRADING.md` is the
 procedure, step by step.
@@ -77,10 +78,10 @@ The service pins the tag exactly (Task 6):
 
 ```toml
 [project]
-dependencies = ["pynesys-pynecore==6.10.10+qg.1"]
+dependencies = ["pynesys-pynecore==6.10.10+qg.2"]
 
 [tool.uv.sources]
-pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.1" }
+pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.2" }
 ```
 
 `uv lock` records the tag's commit sha; the image needs a C compiler (Cython

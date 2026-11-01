@@ -20,7 +20,7 @@ def __test_helper_root(tmp_path: Path) -> Path:
 
 def __test_layer_a_comes_from_the_package__():
     jobs = common.layer_a_jobs()
-    assert [j.id for j in jobs] == ["gate_ta@1", "gate_ta@2", "gate_ta@3", "gate_draw@1", "gate_draw@2", "gate_draw@3"]
+    assert [j.id for j in jobs] == ["gate_ta@1", "gate_ta@2", "gate_ta@3", "gate_ta@4", "gate_draw@1", "gate_draw@2", "gate_draw@3"]
     assert {j.script.parent for j in jobs} == {Path(common.__file__).parent / "scripts"}
     assert len(jobs[0].bars) == 600
 
