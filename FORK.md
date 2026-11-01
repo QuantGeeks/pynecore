@@ -37,6 +37,7 @@ Commit subjects follow upstream's Conventional Commits when a change is upstream
 
 | Commit | Why (spec) | Upstream issue | Status |
 |---|---|---|---|
+| feat(math): window re-sum mode for math.sum | spec §9.2 E1; default off until the §9.2 gate (Task 5) | pending: qg/upstream/e1-window-resum.md | carried, default off |
 
 ## Engine findings without a patch
 

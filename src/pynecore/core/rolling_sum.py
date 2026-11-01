@@ -49,7 +49,46 @@ from .safe_convert import native_int
 from .series import SeriesImpl
 from ..types.na import na_float
 
-__all__ = ['sum_fires', 'SumMachine', 'rolling_sum_step']
+__all__ = ['SUM_MODES', 'sum_fires', 'SumMachine', 'rolling_sum_step',
+           'set_sum_mode', 'get_sum_mode']
+
+#: The two machines ``math.sum`` can run (QuantGeeks fork, spec 9.2 E1).
+#: ``"compensated"`` is this module's rolling compensated sum and stays the
+#: default until the E1 gate passes in the private CI; ``"window"`` re-sums the
+#: raw window each bar (``core.window_sum``, which ``lib._math_stateful.sum``
+#: installs per call site while it is selected).
+SUM_MODES: tuple[str, str] = ("compensated", "window")
+
+
+def set_sum_mode(mode: str) -> None:
+    """
+    Select the ``math.sum`` machine for call sites created afterwards.
+
+    :param mode: One of :data:`SUM_MODES`.
+    :raises ValueError: On any other value.
+    """
+    global _sum_mode
+    if mode not in SUM_MODES:
+        raise ValueError(f"sum mode must be one of {SUM_MODES}, got {mode!r}")
+    _sum_mode = mode
+
+
+def get_sum_mode() -> str:
+    """
+    The selected ``math.sum`` machine.
+
+    :return: One of :data:`SUM_MODES`.
+    """
+    return _sum_mode
+
+
+#: The selected machine. Lowercase module global on purpose: the fork's
+#: per-runner state scan (``pynecore.core.runner_state``) tracks it, so the
+#: mode belongs to the runner that set it, not to the process. ``PYNE_SUM_MODE``
+#: seeds it once at import; an unknown value is refused there the same way
+#: :func:`set_sum_mode` refuses it.
+_sum_mode: str = "compensated"
+set_sum_mode(_os.environ.get("PYNE_SUM_MODE", "compensated"))
 
 _STALE_TOKEN_ERROR = "math.sum rollback target is not a state its machine can return to"
 
