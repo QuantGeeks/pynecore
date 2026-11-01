@@ -35,6 +35,14 @@ def __test_every_carried_commit_has_a_row__(tmp_path):
     assert p.stdout.strip() == "FORK.md OK: 1 carried commit(s), 1 fork-only commit(s)"
 
 
+def __test_not_filed_row_passes__(tmp_path):
+    nf = ROW.replace("https://github.com/PyneSys/pynecore/issues/101", "not filed (sev, 2026-10-31)")
+    r = __test_helper_repo(tmp_path, ["qg: fork policy", "feat(math): window re-sum mode for math.sum"], HEAD + nf)
+    p = __test_helper_run(r)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert p.stdout.strip() == "FORK.md OK: 1 carried commit(s), 1 fork-only commit(s)"
+
+
 def __test_missing_row_is_refused_and_other_tables_do_not_count__(tmp_path):
     r = __test_helper_repo(tmp_path, ["feat(core): per-runner state"], HEAD + ROW + TAIL)
     p = __test_helper_run(r)

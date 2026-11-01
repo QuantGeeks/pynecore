@@ -7,6 +7,7 @@ compensated accumulator matches TradingView "bit for bit", measured there on EUR
 
 ```python
 import random
+from pathlib import Path
 from pynecore.lib import script, ta, plot, high, low
 from pynecore.types.ohlcv import OHLCV
 from pynecore.core.script_runner import ScriptRunner

@@ -9,10 +9,10 @@ is upstream's, bit for bit; the drift gate proves it.
 
 The fork is **public** (a fork of a public repository cannot be private), so nothing private runs
 or appears in it: no house script, no TradingView export, no member data, no production or
-staging name, no secret. Tests use generated series; upstream issues carry synthetic
-reproductions, never TradingView data. The golden, parity and performance gates that need the
-real fixtures run in the private `QuantGeeks/indicator-scripts` CI against the fork at its
-pinned tag.
+staging name, no secret. Tests use generated series; the `qg/upstream/` write-ups carry
+synthetic reproductions only, never TradingView data. The golden, parity and performance gates
+that need the real fixtures run in the private `QuantGeeks/indicator-scripts` CI against the
+fork at its pinned tag.
 
 ## Branches and merge method
 
@@ -22,22 +22,24 @@ title is the squashed commit's subject and the `FORK.md` row's "Commit" cell, ve
 Commit subjects follow upstream's Conventional Commits when a change is upstream-offerable
 (`feat(math): …`, `feat(core): …`) and `qg: …` when it is fork-only.
 
-## The upstream-first procedure
+## The write-up procedure
 
-1. write `qg/upstream/<slug>.md` (title line, PyneCore version, minimal repro script, observed
-   vs expected with numbers, our evidence, the question) before the code;
-2. sev files it: `gh issue create -R PyneSys/pynecore --title "<title line>" --body-file qg/upstream/<slug>.md`;
-3. the row's issue cell becomes the URL (`check_fork_md.py` keeps the PR red until then);
-4. a PR to upstream only where the issue invites one (upstream closes external PRs and
-   re-implements from reproductions, `pynecore-upstream/FINDINGS.md` "External PRs");
-5. when upstream ships an equivalent, the row's status becomes `drop at next rebase (upstream
-   <version>)` and Task 5's drift gate decides the equivalence.
+(sev, 2026-10-31: **nothing is pushed to upstream** — no issue, no PR; we make our own
+system work.)
+
+1. write `qg/upstream/<slug>.md` (title line, PyneCore version, minimal synthetic repro
+   script, observed vs expected with numbers, our evidence, the open question) before the
+   code — it is the record a future contributor or rebase needs;
+2. the row's "Upstream" cell is `not filed (sev, 2026-10-31)`; `pending:` marks a write-up
+   not yet finished and keeps the PR red;
+3. when upstream ships an equivalent, the row's status becomes `drop at next rebase
+   (upstream <version>)` and Task 5's drift gate decides the equivalence.
 
 ## Carried patches
 
-| Commit | Why (spec) | Upstream issue | Status |
+| Commit | Why (spec) | Upstream | Status |
 |---|---|---|---|
-| feat(math): window re-sum mode for math.sum | spec §9.2 E1; default off until the §9.2 gate (Task 5) | pending: qg/upstream/e1-window-resum.md | carried, default off |
+| feat(math): window re-sum mode for math.sum | spec §9.2 E1; default off until the §9.2 gate (Task 5) | not filed (sev, 2026-10-31); write-up qg/upstream/e1-window-resum.md | carried, default off |
 
 ## Engine findings without a patch
 
