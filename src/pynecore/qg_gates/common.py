@@ -94,8 +94,9 @@ def _fixture_bars(csv: Path, n: int = 600) -> list[OHLCV]:
     out: list[OHLCV] = []
     with gzip.open(csv, "rt", newline="") as f:
         for rec in _csv.DictReader(f):
+            vol = 0.0 if rec["Volume"] == "" else float(rec["Volume"])  # Plan 5 Task 1's rule
             out.append(OHLCV(int(rec["time"]) * 1000, float(rec["open"]), float(rec["high"]),
-                             float(rec["low"]), float(rec["close"]), float(rec["Volume"])))
+                             float(rec["low"]), float(rec["close"]), vol))
             if len(out) == n:
                 break
     return out
@@ -109,11 +110,16 @@ def fixture_syminfo(manifest: dict):
 
     ``session``: ``regular`` (Mon-Fri 09:30-16:00), ``extended`` (Mon-Fri
     04:00-20:00) or ``instrument``/absent (the 24/7 default).  ``tv_symbol``
-    ``PREFIX:SYMBOL`` sets prefix and ticker.
+    ``PREFIX:SYMBOL`` sets prefix and ticker.  The derived SymInfo always runs
+    on ``America/New_York``: the engine evaluates ``opening_hours`` in
+    ``syminfo.timezone``, and under the default's ``UTC`` a 09:30-16:00 session
+    contains no SPY bar (``session.isfirstbar`` fires on no bar, ``islastbar``
+    at 11:55 ET; ruling 2026-11-01, Plan 5 review X5).
     """
     from datetime import time as dtime
     from pynecore.core.syminfo import SymInfoInterval, SymInfoSession
     si = default_syminfo()
+    si.timezone = "America/New_York"
     session = (manifest or {}).get("session")
     if session in ("regular", "extended"):
         start, end = (dtime(9, 30), dtime(16, 0)) if session == "regular" else (dtime(4, 0), dtime(20, 0))
@@ -262,8 +268,9 @@ def load_tv_export(path: Path) -> tuple[list[OHLCV], list[str], list[list[float 
 
     keep = [r for r in data if all(r[at[f]] != "" for f in ("open", "high", "low", "close"))]
     bars = [OHLCV(int(r[at["time"]]) * 1000, float(r[at["open"]]), float(r[at["high"]]),
-                  float(r[at["low"]]), float(r[at["close"]]), float(r[at["Volume"]]))
-            for r in keep]
+                  float(r[at["low"]]), float(r[at["close"]]),
+                  0.0 if r[at["Volume"]] == "" else float(r[at["Volume"]]))
+            for r in keep]  # an empty Volume cell is 0.0 (Plan 5 Task 1's rule)
     headers = head[6:]
     cols = [[None if r[6 + i] == "" else float(r[6 + i]) for r in keep]
             for i in range(len(headers))]

@@ -167,3 +167,59 @@ def __test_golden_offset_twentyfive__(tmp_path):
                                      "columns": [{"tv_index": 6, "plot": "sma40", "shift": shift}]}]))
         p = __test_helper_gate("pynecore.qg_gates.golden", "--root", str(r), "--spec", str(spec))
         assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (code, last), (shift, p.stdout)
+
+
+def __test_fixture_syminfo_runs_on_eastern_time__(tmp_path):
+    """ X5: under fixture_syminfo({"session": "regular"}) the engine's session
+    clock is Eastern — session.isfirstbar fires on exactly the 09:30 ET bars;
+    under UTC the same session contains none of them """
+    script = tmp_path / "isfirstbar_probe.py"
+    script.write_text('"""\n@pyne\n"""\n'
+                      "from pynecore.lib import script, session, plot\n\n\n"
+                      '@script.indicator("isfirstbar probe")\n'
+                      'def main():\n    plot(session.isfirstbar, "first")\n')
+    bars, px, rnd = [], 500.0, __import__("random").Random(31)
+    day = 1779802200  # 09:30 ET
+    while len(bars) < 800:  # three RTH sessions of 1-minute bars
+        for k in range(390):
+            o = round(px, 2)
+            c = round(o + rnd.uniform(-0.6, 0.6), 2)
+            bars.append(common.OHLCV((day + 60 * k) * 1000, o,
+                                     round(max(o, c) + rnd.uniform(0, 0.3), 2),
+                                     round(min(o, c) - rnd.uniform(0, 0.3), 2), c,
+                                     float(rnd.randint(50000, 500000))))
+            px = c
+            if len(bars) == 800:
+                break
+        day += 86400
+    si = common.fixture_syminfo({"session": "regular"})
+    rows = common._run_swapped(script, bars, syminfo=si)
+    flagged = [c.timestamp for c, p in rows if p.get("first")]
+    assert flagged == [1779802200000, 1779888600000, 1779975000000]
+    import dataclasses
+    utc = dataclasses.replace(si, timezone="UTC")  # the negative control: no bar in session
+    rows = common._run_swapped(script, bars, syminfo=utc)
+    assert not [c.timestamp for c, p in rows if p.get("first")]
+
+
+def __test_empty_volume_cells_are_zero__(tmp_path):
+    """ X6: an empty Volume cell is 0.0 in load_tv_export and in _fixture_bars
+    (the SPX and index feeds carry an all-empty Volume column; float("") raises) """
+    import gzip as _gzip
+    f = tmp_path / "no_volume.csv.gz"
+    rows = "".join(f"{1700000000 + 60 * i},1,2,0.5,1.5,\n" for i in range(3))
+    f.write_bytes(_gzip.compress(("time,open,high,low,close,Volume\n" + rows).encode(), mtime=0))
+    bars, _headers, _cols = common.load_tv_export(f)
+    assert [b.volume for b in bars] == [0.0, 0.0, 0.0]
+    root = tmp_path / "root"
+    fx = root / "fixtures" / "tradingview"
+    d = root / "standard" / "sma40"
+    fx.mkdir(parents=True)
+    d.mkdir(parents=True)
+    (fx / "only.csv.gz").write_bytes(f.read_bytes())
+    (fx / "only.manifest.json").write_text(json.dumps({"file": "only.csv.gz", "kind": "script"}))
+    (d / "sma40.py").write_text((Path(common.__file__).parent / "scripts" / "e1_sma40.py").read_text())
+    (d / "manifest.toml").write_text("")
+    jobs = common.catalogue_jobs(root)  # the control: no ValueError, jobs come back
+    assert [j.id for j in jobs] == ["standard/sma40@only"]
+    assert [b.volume for b in jobs[0].bars] == [0.0, 0.0, 0.0]
