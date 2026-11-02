@@ -251,12 +251,15 @@ def mismatching(jobs: list[Job], solo, together) -> list[str]:
 
 def load_tv_export(path: Path) -> tuple[list[OHLCV], list[str], list[list[float | None]]]:
     """A TradingView "Download chart data" export: the bars (ms timestamps), the
-    plot-column titles from index 6 on, and each column's values (``None`` = the
-    empty cell) — ``cmp.load_tv`` reduced to the fork's fixed layout.  The six
-    bar fields are read BY HEADER NAME — the VWAP exports carry ``Volume`` at
-    index 8, Supertrend at 7; never column 5 — and rows whose open/high/low/
-    close are empty (an Ichimoku export's forward rows) are dropped before the
-    bars and the columns are built (ruling 2026-11-01, Plan 5 review X2)."""
+    FULL header, and one value list per header column — index ``i`` of both is
+    header column ``i``, the OHLCV columns included as numbers, so a
+    ``tv_index`` addresses the full header (X0, ruling 2026-11-02: the
+    Supertrend export carries its plots at 5-6 and Volume at 7, and the old
+    ``head[6:]`` view misread it).  The six bar fields are still read BY HEADER
+    NAME (X2) — the VWAP exports carry ``Volume`` at index 8, Supertrend at 7;
+    never column 5 — and rows whose open/high/low/close are empty (an Ichimoku
+    export's forward rows) are dropped before the bars and the columns are
+    built (ruling 2026-11-01, Plan 5 review X2)."""
     import csv as _csv
     import gzip
     p = Path(path)
@@ -273,8 +276,8 @@ def load_tv_export(path: Path) -> tuple[list[OHLCV], list[str], list[list[float 
                   float(r[at["low"]]), float(r[at["close"]]),
                   0.0 if r[at["Volume"]] == "" else float(r[at["Volume"]]))
             for r in keep]  # an empty Volume cell is 0.0 (Plan 5 Task 1's rule)
-    headers = head[6:]
-    cols = [[None if r[6 + i] == "" else float(r[6 + i]) for r in keep]
+    headers = list(head)
+    cols = [[None if r[i] == "" else float(r[i]) for r in keep]
             for i in range(len(headers))]
     return bars, headers, cols
 

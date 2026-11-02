@@ -23,6 +23,9 @@ from pathlib import Path
 
 from pynecore.qg_gates import common
 
+#: the export's six bar-field column titles: a tv_index naming one is not a plot
+BAR_FIELDS = ("time", "open", "high", "low", "close", "Volume")
+
 
 def _shifted(values: list, k: int) -> list:
     return values if not k else values[k:] + [None] * k
@@ -55,7 +58,7 @@ def main() -> int:
         manifest = fx / f"{stem}.manifest.json"
         manifest_meta = json.loads(manifest.read_text()) if manifest.is_file() else {}
         csv = fx / (manifest_meta.get("file") or f"{stem}.csv.gz")
-        bars, _headers, cols = common.load_tv_export(csv)
+        bars, headers, cols = common.load_tv_export(csv)
         rows = common._run_swapped(script, bars, entry.get("inputs") or {},
                                    entry.get("sum_mode", "compensated"),
                                    common.fixture_syminfo(manifest_meta))
@@ -67,7 +70,14 @@ def main() -> int:
                       f"shift {shift} must be >= 0 (minus the plot offset)")
                 failed += 1
                 continue
-            tv = cols[col["tv_index"] - 6]
+            tv_index = col["tv_index"]
+            if tv_index < 0 or tv_index >= len(headers) or headers[tv_index] in BAR_FIELDS:
+                what = headers[tv_index] if 0 <= tv_index < len(headers) else "out of range"
+                print(f"GOLDEN {entry['script']} {stem} [{tv_index}→{col['plot']}]: "
+                      f"tv_index {tv_index} is {what}, not a plot column")
+                failed += 1
+                continue
+            tv = cols[tv_index]
             ours = _shifted([_num(p.get(col["plot"])) for _c, p in rows], shift)
             exact, rel9, n = common.compare_columns(tv, ours, entry.get("warmup_bars", 1500))
             print(f"GOLDEN {entry['script']} {stem} [{col['tv_index']}→{col['plot']}]: "
