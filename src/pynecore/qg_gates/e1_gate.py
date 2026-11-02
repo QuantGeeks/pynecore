@@ -23,7 +23,21 @@ from pynecore.qg_gates import common
 
 PRISTINE = Path(__file__).resolve().parent / "pristine.py"
 SCRIPT = Path(__file__).resolve().parent / "scripts" / "e1_sma40.py"
-COL = 6  # the export's first plot column: the SMA
+# The export's sma40 column, found BY NAME (X0, ruling 2026-11-02): the E1
+# exports order their columns differently (Supertrend carries plots at 5-6 with
+# Volume last), so a fixed index would misread them.
+COL = "sma40"
+
+
+def _sma40_column(headers) -> int:
+    """The sma40 column by name; else the first column after the five bar
+    fields that is not Volume."""
+    if COL in headers:
+        return headers.index(COL)
+    for i, h in enumerate(headers):
+        if i >= 5 and h != "Volume" and h not in ("time", "open", "high", "low", "close"):
+            return i
+    raise SystemExit(f"QG-GATES: no sma40 column in the export")
 
 
 def _stems(fx: Path, pattern: str) -> list[str]:
@@ -75,12 +89,13 @@ def main() -> int:
         return 2
 
     def exacts(stem: str) -> tuple[int, int, int, int]:
-        bars, _headers, cols = common.load_tv_export(_csv_for(fx, stem))
+        bars, headers, cols = common.load_tv_export(_csv_for(fx, stem))
         manifest = fx / f"{stem}.manifest.json"
         meta = json.loads(manifest.read_text()) if manifest.is_file() else {}
         modes = _run_modes(bars, common.fixture_syminfo(meta))
-        c_ex, _c_r, n = common.compare_columns(cols[COL - 6], modes["compensated"], a.warmup)
-        w_ex, _w_r, _ = common.compare_columns(cols[COL - 6], modes["window"], a.warmup)
+        col = _sma40_column(headers)
+        c_ex, _c_r, n = common.compare_columns(cols[col], modes["compensated"], a.warmup)
+        w_ex, _w_r, _ = common.compare_columns(cols[col], modes["window"], a.warmup)
         print(f"E1 {stem}: compensated exact {c_ex}/{n} window exact {w_ex}/{n}")
         return c_ex, w_ex, n
 

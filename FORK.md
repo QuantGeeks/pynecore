@@ -61,7 +61,7 @@ system work.)
 - **GATE3** proves co-resident runners equal per-process pristine runs (`pristine.py`, plain PyneCore, one process each) over K=6 random-partner trials plus one trio trial per script: `GATE3 total mismatching runners 0/46` on Layer A.
 - **GATE4** pins the static state inventory: `GATE4 inventory unchanged (3587 paths)`. `qg/gates/inventory.json` is updated by re-running `gate4_inventory --write` in the Linux candidate image and committing it in the same PR — that diff is the person's review (spec §13.1); the CI never rewrites it.
 
-- **GOLDEN** (Task 5; private CI with `--root` and Plan 1 Task 12's `golden.json`): our values against a TradingView export, column by column — the spec is a JSON list of `{"script","stem","columns":[{"tv_index","plot","shift"}]}` with optional `inputs` (default `{}`), `sum_mode` (default `"compensated"`, ruling 9) and `warmup_bars` (default 1500, the tvtruth method); the column mapping is written once by `tv_index`, the E2 `shift` is applied in the harness.  Per column `GOLDEN <script> <stem> [<tv_index>→<plot>]: exact <a>/<n> rel9 <b>/<n>`; a column passes iff rel9 covers every compared bar; `GOLDEN PASS <c> columns` / `GOLDEN FAIL <k> of <c> columns`.
+- **GOLDEN** (Task 5; Task 11: full-header `tv_index`, X0; private CI with `--root` and Plan 1 Task 12's `golden.json`): our values against a TradingView export, column by column — the spec is a JSON list of `{"script","stem","columns":[{"tv_index","plot","shift"}]}` with optional `inputs` (default `{}`), `sum_mode` (default `"compensated"`, ruling 9) and `warmup_bars` (default 1500, the tvtruth method); the column mapping is written once by `tv_index`, the E2 `shift` is applied in the harness.  Per column `GOLDEN <script> <stem> [<tv_index>→<plot>]: exact <a>/<n> rel9 <b>/<n>`; a column passes iff rel9 covers every compared bar; `GOLDEN PASS <c> columns` / `GOLDEN FAIL <k> of <c> columns`.
 - **E1** (Task 5; Task 8: `--warmup 39`): `e1_gate --root --reference <stem> --further '<glob>' --expect-window 41301 --expect-compensated 428` runs `scripts/e1_sma40.py` in both sum modes on each export's own bars (each mode its own process) and compares with column index 6 **from bar 39, the first bar the script can compute (its length − 1)** — a custom-range export carries TradingView's prior-history values in its first 39 cells, where the script on the export's own bars is na (measured 2026-11-01: the NVDA 5m and SPX 1D further exports were each short by exactly 39 bars).  The reproduction holds on the reference when the window mode is exact on every compared bar and the compensated machine is not (`E1 REPRODUCTION FAIL …`, exit 1, otherwise); the gate prints `E1 GATE (§9.2): PASSED` once **two further exports agree** — until then `… <k> of 2 further exports agree; window mode stays off by default` (both exit 0): the window mode becomes the default only after PASSED (README ruling 9 — the flip is its own ruling; the default stays `compensated`).  With `--warmup 0` the comparison starts at bar 0 (the Task 5 behaviour, explicit).
 - **DRIFT** (Task 5; fork CI with `--upstream-python`): every Layer A job batch, compensated, via `pristine.py` under each interpreter — the baseline is upstream `v6.10.10`, whose install never calls `set_sum_mode`.  `DRIFT 6.10.10+qg.2 vs 6.10.10: 0/7 jobs differ []`; `--require-identical` fails on any difference: the fork's default build is upstream's.
 - **PERF** (Task 5): µs/bar per script and mode — the median of 5 per-run medians, the first 200 bars skipped, one process per run.  Budget **25.5 µs/bar = 1.5 × 17.0**, the slowest median of the 25 standard scripts (ichimoku, SPY RTH 1m, `proof/catalogue/REPORT.md`); Layer A runs on `synthetic_bars(7, 8580)`; `house/` scripts are reported only (a heavy house script is the governor's case, spec §4.2).  Gated (rulings 2026-11-01 and 2026-11-02): with `--baseline-python`, the **compensated** mode fails on **ratio r > 1.25** against upstream measured in the same run — like for like, the only comparison that means anything on unknown hardware — and the **window** mode on **its cost over the SAME run's compensated time**, `y_window / y_compensated > 1.75` (measured 1.14–1.42 on Layer A and the catalogue, bollinger's three sums 1.42; 1.75 leaves the margin the 1.25 ratio leaves Layer A): an absolute budget on a shared runner measures the runner, not the code (2026-11-02: `gate_ta compensated 22.2 / window 25.9` on code whose normal window is 15.7).  The window line prints `… ratio <r> vs compensated <w>`.  Without a baseline (a local run), both modes gate on the absolute `y > 25.5`.  `run_all.sh` and CI always pass the baseline.  `PERF <id> <mode> <y> us/bar (budget 25.5) [base <x> ratio <r>]`, `PERF activate p50 <x> us (60 states)` (reference 100 µs, `proof/scale/REPORT.md`, not gated), `PERF BUDGET PASS` / `PERF BUDGET FAIL <k> scripts`.  `QG_PERF_INJECT_US=<n>` busy-waits n µs per bar under the measured interpreter only (the control).
@@ -69,7 +69,7 @@ Negative controls in CI (`gates-negative` job): the gate1 control above, and the
 
 ## Releases and the service pin
 
-The release tag is `6.10.10-qg.5`, the package version `6.10.10+qg.5` (PEP 440;
+The release tag is `6.10.10-qg.6`, the package version `6.10.10+qg.6` (PEP 440;
 spec §4.9). Never a GitHub Release (it triggers upstream's PyPI workflow); the
 tag push and the rebase force-push are operator steps — `UPGRADING.md` is the
 procedure, step by step.
@@ -78,10 +78,10 @@ The service pins the tag exactly (Task 6):
 
 ```toml
 [project]
-dependencies = ["pynesys-pynecore==6.10.10+qg.5"]
+dependencies = ["pynesys-pynecore==6.10.10+qg.6"]
 
 [tool.uv.sources]
-pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.5" }
+pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.6" }
 ```
 
 `uv lock` records the tag's commit sha; the image needs a C compiler (Cython

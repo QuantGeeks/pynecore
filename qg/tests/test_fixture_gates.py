@@ -73,11 +73,11 @@ def __test_golden_pass_and_shift_fail__(tmp_path):
 def __test_drift_identical_and_mode_control__():
     py = sys.executable
     p = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py, "--require-identical")
-    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.5 vs 6.10.10+qg.5: 0/7 jobs differ []")
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.6 vs 6.10.10+qg.6: 0/7 jobs differ []")
     q = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py,
                            "--candidate-env", "PYNE_SUM_MODE=window", "--require-identical")
     assert q.returncode == 1
-    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.5 vs 6.10.10+qg.5: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
+    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.6 vs 6.10.10+qg.6: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
 
 
 def __test_perf_budget_and_injection__():
@@ -127,10 +127,12 @@ def __test_load_tv_export_names_volume_and_drops_empty_rows__(tmp_path):
     bars, headers, cols = common.load_tv_export(f)
     assert [b.volume for b in bars] == [100.0, 101.0, 102.0, 103.0]  # by NAME, not index 5
     assert len(bars) == 4                                                            # the empty row dropped
-    assert headers == ["signal", "vwap", "Volume"]          # the columns from index 6 on, raw order
-    assert cols[0] == [20.0, 21.0, 22.0, 23.0]              # every column dropped the empty row
-    assert cols[1] == [10.0, 11.0, 12.0, 13.0]
-    assert cols[2] == [100.0, 101.0, 102.0, 103.0]          # the late Volume stays addressable at raw 8
+    assert headers == ["time", "open", "high", "low", "close", "anchor", "signal",
+                       "vwap", "Volume"]              # the FULL header, index i = column i (X0)
+    assert cols[6] == [20.0, 21.0, 22.0, 23.0]              # every column dropped the empty row
+    assert cols[7] == [10.0, 11.0, 12.0, 13.0]
+    assert cols[8] == [100.0, 101.0, 102.0, 103.0]          # the late Volume stays addressable at raw 8
+    assert cols[0] == [1700000000, 1700000060, 1700000120, 1700000180]   # bar fields as numbers
     assert not any(9.9 in c or 7.7 in c for c in cols)      # the dropped row's cells are gone
 
 
@@ -327,3 +329,31 @@ def __test_perf_window_gates_against_the_same_runs_compensated__():
     assert plain.stdout.strip().splitlines()[-1] == "PERF BUDGET PASS", plain.stdout
     for win in (ln for ln in plain.stdout.splitlines() if " window " in ln):
         assert float(win.rsplit(" ", 1)[1]) <= 1.75, win
+
+
+def __test_golden_reads_a_plot_before_volume__(tmp_path):
+    """ X0 (Task 11): a tv_index addresses the FULL header, so an export whose
+    plot sits before Volume (Supertrend at 5, here sma40 at 5) is read right;
+    a tv_index naming a bar field is refused as a column """
+    import gzip as _gzip
+    r = __test_helper_root(tmp_path)
+    fx = r / "fixtures" / "tradingview"
+    bars = common.synthetic_bars(41, 2000)
+    hl2 = [(b.high + b.low) / 2 for b in bars]
+    eng = [None if i < 39 else sum(hl2[i - 39:i + 1]) / 40 for i in range(len(bars))]
+    lines = [f"{b.timestamp // 1000},{b.open!r},{b.high!r},{b.low!r},{b.close!r},"
+             f"{'' if eng[i] is None else repr(eng[i])},{b.volume!r}\n" for i, b in enumerate(bars)]
+    (fx / "before.csv.gz").write_bytes(
+        _gzip.compress(("time,open,high,low,close,sma40,Volume\n" + "".join(lines)).encode(), mtime=0))
+    (fx / "before.manifest.json").write_text(json.dumps({"file": "before.csv.gz", "kind": "script"}))
+    spec = tmp_path / "g.json"
+    spec.write_text(json.dumps([{"script": "standard/sma40", "stem": "before",
+                                 "columns": [{"tv_index": 5, "plot": "sma40", "shift": 0}]}]))
+    p = __test_helper_gate("pynecore.qg_gates.golden", "--root", str(r), "--spec", str(spec))
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "GOLDEN PASS 1 columns"), p.stdout
+    spec.write_text(json.dumps([{"script": "standard/sma40", "stem": "before",
+                                 "columns": [{"tv_index": 6, "plot": "sma40", "shift": 0}]}]))
+    q = __test_helper_gate("pynecore.qg_gates.golden", "--root", str(r), "--spec", str(spec))
+    assert q.returncode == 1, q.stdout
+    assert "tv_index 6 is Volume, not a plot column" in q.stdout, q.stdout
+    assert q.stdout.strip().splitlines()[-1] == "GOLDEN FAIL 1 of 1 columns"
