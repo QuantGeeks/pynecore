@@ -35,7 +35,10 @@ from pathlib import Path
 from pynecore.qg_gates import common
 
 BUDGET = 25.5       # absolute, laptop-class hardware (no baseline given)
-RATIO_BUDGET = 1.25  # against upstream measured in the same run (ruling 2026-11-01)
+RATIO_BUDGET = 1.25  # compensated vs upstream, same run (ruling 2026-11-01)
+# window vs the same run's compensated: measured 1.14-1.42 (bollinger's three
+# sums 1.42), 1.75 leaves the margin the 1.25 ratio leaves Layer A
+WINDOW_OVER_COMPENSATED = 1.75
 LAYER_A_DIR = Path(common.__file__).resolve().parent / "scripts"
 
 _RUN_CODE = """
@@ -53,10 +56,28 @@ ts = []
 inject = float(os.environ.get("QG_PERF_INJECT_US", "0") or "0")
 if not inject and os.environ.get("PYNE_SUM_MODE") == "window":
     inject = float(os.environ.get("QG_PERF_INJECT_WINDOW_US", "0") or "0")
+# Relative window injection (ruling 2026-11-02): an absolute us divided by the
+# machine's own step time is machine-dependent; factor x the bar's own measured
+# step keeps the ratio (1 + factor) on every machine.
+win_factor = 0.0
+if os.environ.get("PYNE_SUM_MODE") == "window":
+    win_factor = float(os.environ.get("QG_PERF_INJECT_WINDOW_FACTOR", "0") or "0")
 for _c, _p in r.run_iter():
     n = time.perf_counter()
     if t_prev is not None:
-        ts.append(n - t_prev)
+        if win_factor:
+            # Sleep factor x THIS bar's own step: the clock is reset after every
+            # sleep, so a step never contains a previous sleep and the ratio is
+            # exactly (1 + factor) -- a sleep proportional to the interval since
+            # t_prev would feed back on itself and diverge for factor >= 1.
+            step = n - t_prev
+            end = n + win_factor * step
+            while time.perf_counter() < end:
+                pass
+            n = time.perf_counter()
+            ts.append(n - t_prev)
+        else:
+            ts.append(n - t_prev)
     if inject:
         end = n + inject * 1e-6
         while time.perf_counter() < end:
@@ -124,26 +145,45 @@ def main() -> int:
         failed = 0
         for sid, script, data in scripts:
             bad = False
+            # Both modes are measured first, then gated: the window mode is
+            # judged against THIS run's compensated time (ruling 2026-11-02).
+            ys = {}
             for mode in ("compensated", "window"):
                 menv = dict(env)
                 if mode == "window":
                     menv["PYNE_SUM_MODE"] = "window"
-                y = statistics.median([_median_us(a.python, script, data, menv)
-                                       for _ in range(a.runs)])
+                ys[mode] = statistics.median([_median_us(a.python, script, data, menv)
+                                              for _ in range(a.runs)])
+            for mode in ("compensated", "window"):
+                y = ys[mode]
                 ratio = y / base_by_script[script] if script in base_by_script else None
                 line = f"PERF {sid} {mode} {y:.1f} us/bar (budget {BUDGET})"
-                if ratio is not None:
-                    line += f" base {base_by_script[script]:.1f} ratio {ratio:.2f}"
-                print(line)
-                # The ratio is like for like with upstream (compensated) only:
-                # the window re-sum is O(length) per bar where upstream's
-                # accumulator is O(1), so window-vs-upstream-compensated compares
-                # two algorithms and would fail every multi-sum catalogue script
-                # (bollinger 1.42 in CI, Plan 5 Task 2; ruling 2026-11-01).
-                if ratio is not None and mode == "compensated":
-                    gated = ratio > RATIO_BUDGET
+                gated = False
+                if mode == "compensated":
+                    if ratio is not None:
+                        # Like for like with upstream: the only comparison that
+                        # means anything on unknown hardware (ruling 2026-11-01).
+                        line += f" base {base_by_script[script]:.1f} ratio {ratio:.2f}"
+                        gated = ratio > RATIO_BUDGET
+                    else:
+                        gated = y > BUDGET
                 else:
-                    gated = y > BUDGET
+                    if ratio is not None:
+                        # The window re-sum is O(length) against the O(1)
+                        # accumulator, so window-vs-upstream compares two
+                        # algorithms and an absolute budget measures the runner,
+                        # not the code (2026-11-02: a shared runner printed
+                        # compensated 22.2 / window 25.9 on code whose normal
+                        # window is 15.7); the like-for-like comparison is the
+                        # window cost over the SAME run's compensated time.
+                        over = y / ys["compensated"]
+                        line += (f" base {base_by_script[script]:.1f} ratio {ratio:.2f}"
+                                 f" vs compensated {over:.2f}")
+                        gated = over > WINDOW_OVER_COMPENSATED
+                    else:
+                        # A local run without a baseline: the absolute budget.
+                        gated = y > BUDGET
+                print(line)
                 if gated and not sid.startswith("house/"):
                     bad = True
             if bad:

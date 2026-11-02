@@ -73,11 +73,11 @@ def __test_golden_pass_and_shift_fail__(tmp_path):
 def __test_drift_identical_and_mode_control__():
     py = sys.executable
     p = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py, "--require-identical")
-    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.4 vs 6.10.10+qg.4: 0/7 jobs differ []")
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.5 vs 6.10.10+qg.5: 0/7 jobs differ []")
     q = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py,
                            "--candidate-env", "PYNE_SUM_MODE=window", "--require-identical")
     assert q.returncode == 1
-    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.4 vs 6.10.10+qg.4: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
+    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.5 vs 6.10.10+qg.5: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
 
 
 def __test_perf_budget_and_injection__():
@@ -296,7 +296,7 @@ def __test_perf_ratio_gates_the_compensated_mode_only__():
     args = ("pynecore.qg_gates.perf", "--python", py, "--baseline-python", py)
     base = __test_helper_gate(*args).stdout.strip().splitlines()[-1]
     assert base == "PERF BUDGET PASS", base  # both modes' ratio ~1, unpoisoned
-    w = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_US": "3"})
+    w = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_FACTOR": "0.3"})
     assert (w.returncode, w.stdout.strip().splitlines()[-1]) == (0, "PERF BUDGET PASS"), w.stdout
     c = __test_helper_gate(*args, env={"QG_PERF_INJECT_US": "3"})
     # n is hardware-dependent (gate_ta's base rides the 1.25 edge on a slow
@@ -304,3 +304,26 @@ def __test_perf_ratio_gates_the_compensated_mode_only__():
     # that the COMPENSATED ratio fails at least one script
     assert c.returncode == 1, c.stdout
     assert re.fullmatch(r"PERF BUDGET FAIL [12] scripts", c.stdout.strip().splitlines()[-1]), c.stdout
+
+
+def __test_perf_window_gates_against_the_same_runs_compensated__():
+    """ with a baseline: the window mode is gated by its cost over the SAME
+    run's compensated time (a shared runner slows both together), never by an
+    absolute budget; the injection is RELATIVE (factor x the bar's own step),
+    so the test holds on every machine (ruling 2026-11-02) """
+    py = sys.executable
+    args = ("pynecore.qg_gates.perf", "--python", py, "--baseline-python", py)
+    big = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_FACTOR": "1.5"})
+    assert big.returncode == 1, big.stdout
+    assert "PERF BUDGET FAIL" in big.stdout.strip().splitlines()[-1], big.stdout
+    for win in (ln for ln in big.stdout.splitlines() if " window " in ln):
+        assert re.search(r"vs compensated [0-9.]+$", win), win
+        assert float(win.rsplit(" ", 1)[1]) > 1.75, win
+    small = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_FACTOR": "0.3"})
+    assert (small.returncode, small.stdout.strip().splitlines()[-1]) == (0, "PERF BUDGET PASS"), small.stdout
+    # Negative control: the unpoisoned run passes with every window vs
+    # compensated <= 1.75 (the algorithm's own 1.1-1.4)
+    plain = __test_helper_gate(*args)
+    assert plain.stdout.strip().splitlines()[-1] == "PERF BUDGET PASS", plain.stdout
+    for win in (ln for ln in plain.stdout.splitlines() if " window " in ln):
+        assert float(win.rsplit(" ", 1)[1]) <= 1.75, win
