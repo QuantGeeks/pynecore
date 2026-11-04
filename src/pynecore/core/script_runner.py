@@ -1209,7 +1209,8 @@ class ScriptRunner:
                  '_round_decimals', '_lossless_volume', '_lossless_prices',
                  '_config_dir', '_symbol_map', '_script_timeframe',
                  '_chart_bar_window',
-                 'broker_balance', '_sim_logged_open_ids', '_inputs', '_settings', '_live')
+                 'broker_balance', '_sim_logged_open_ids', '_inputs', '_settings', '_live',
+                 '_yield_intrabar')
 
     # noinspection PyProtectedMember
     def __init__(self, script_path: Path, ohlcv_iter: Iterable[OHLCV], syminfo: SymInfo, *,
@@ -1219,6 +1220,7 @@ class ScriptRunner:
                  update_syminfo_every_run: bool = False, last_bar_index: int | None = None,
                  last_bar_time: int | None = None,
                  live: bool = False,
+                 yield_intrabar: bool = False,
                  inputs: dict[str, Any] | None = None,
                  settings: dict[str, Any] | None = None,
                  security_data: 'dict[str, str | Path | PluginSymbol] | None' = None,
@@ -1277,6 +1279,10 @@ class ScriptRunner:
                      arrives, while a historical bar is held until the next item shows
                      whether it was the last one. Strategy orders start at the transition:
                      the warmup bars only build the script's state.
+        :param yield_intrabar: Live mode only. Also yield after every intra-bar tick the script
+                     ran on: ``(candle, plot_data)`` with ``candle.is_closed`` False, after the
+                     run and before the next item is pulled from ``ohlcv_iter``. Without it
+                     (the default) only closed bars are yielded, as upstream does.
         :param inputs: Optional dictionary of input values to pass to the script, keyed by
                        the ``main()`` parameter name; overrides values from .toml files
         :param settings: Optional dictionary of script settings (decorator arguments such as
@@ -1581,6 +1587,7 @@ class ScriptRunner:
         self.last_bar_index = last_bar_index
         self.last_bar_time = last_bar_time
         self._live = live
+        self._yield_intrabar = yield_intrabar and live
         # Pre-increment scheme: bumped at the start of each bar's processing
         # (warmup, live, security loops). Starting at -1 keeps the first
         # processed bar at index 0 — matches Pine ``bar_index`` semantics.
@@ -3073,6 +3080,8 @@ class ScriptRunner:
                                              prefix=self.syminfo.prefix)
                     self.ohlcv_iter = (w.aggregated for w in magnifier)
 
+            yield_intrabar = self._yield_intrabar
+
             # --- Helper closures for DRY ---
             signal_rate_sources_fn = self._signal_rate_sources_fn
             sec_begin_bar_fn = self._sec_begin_bar_fn
@@ -3154,6 +3163,17 @@ class ScriptRunner:
                 self.plot_writer.write_ohlcv(row_candle._replace(extra_fields=ef))
 
             # noinspection PyProtectedMember
+            def _intrabar_result(tick):
+                """Yield an executed intra-bar tick (``yield_intrabar``), then clear the
+                per-run containers as the closed-bar path does after its yield."""
+                if not is_strat:
+                    yield tick, lib._plot_data
+                elif position:
+                    yield tick, lib._plot_data, []
+                lib._plot_data.clear()
+                lib._viz_dyn.clear()
+                lib._viz_seq.clear()
+
             def _write_bar_output(bar_candle, echo_lib: bool = True):
                 nonlocal broker_trades_closed_written
                 _write_plot_row(bar_candle, lib._plot_data, echo_lib)
@@ -3785,6 +3805,8 @@ class ScriptRunner:
                                 cast('BrokerPosition', position).update_unrealized_pnl(float(lib.close))
                             _run_libs_and_main()
                             bar_executed = True
+                            if yield_intrabar:
+                                yield from _intrabar_result(candle)
                         last_bar_timestamp = candle.timestamp
 
                     elif not bar_update.is_closed:
@@ -3802,6 +3824,8 @@ class ScriptRunner:
                                 cast('BrokerPosition', position).update_unrealized_pnl(float(lib.close))
                             _run_libs_and_main()
                             bar_executed = True
+                            if yield_intrabar:
+                                yield from _intrabar_result(candle)
 
                     elif bar_update.is_closed:
                         # ── Bar close ──
