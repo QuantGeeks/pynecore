@@ -2632,7 +2632,12 @@ class ScriptRunner:
                         # source of its closed periods (the chart-built bar is the
                         # fallback when none was supplied; the chart's own feed IS that
                         # fallback's input, so it is never "supplied" here).
-                        if (supplied_feed and not sec_state.is_ltf
+                        # Not on a D/W/M chart (``chart_off`` 0): there a period is delivered with
+                        # the first bar of the next one and shares its close instant with the
+                        # previous bar's developing value, so replacing it would make that
+                        # bar's read depend on which of the two entries the batch ring has
+                        # published yet. The chart's own daily bars ARE the official ones there.
+                        if (supplied_feed and not sec_state.is_ltf and sec_state.chart_off > 0
                                 and sec_state.lookahead is Lookahead.ON):
                             load_official_htf_bars(sec_state, str(data_source))
                         # Historical BATCH round: the chart drives this context

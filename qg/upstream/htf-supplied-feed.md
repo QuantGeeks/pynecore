@@ -21,7 +21,10 @@ feed's bars are indexed on the context's period grid (`load_official_htf_bars`),
 delivered as the feed's bar (`official_closed_bar`) in both transports: the per-bar closed step and the planned
 historical developing batch (`DevBatchSpec.official_bars`). The developing period stays chart-built, so
 PyneCore still does not reproduce `lookahead_on`'s future read of a bare `close`; `close[1]` is TradingView's.
-No supplied feed: unchanged (an intraday context is aggregated from the chart's feed; a D/W/M context is
+Not applied on a D/W/M chart: there a period is delivered with the next period's first bar and shares its
+close instant with the previous bar's developing entry, so a replaced value would make the batch ring's pairing
+race-dependent (seen as a flake of `test_063_dev_batch_weekly_chart` under load); the chart's own daily bars are
+the official ones there anyway. No supplied feed: unchanged (an intraday context is aggregated from the chart's feed; a D/W/M context is
 refused with the `security_data` hint). Documented in `request.security`'s docstring.
 
 ## Tests

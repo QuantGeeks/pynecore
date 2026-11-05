@@ -66,7 +66,8 @@ def security(symbol, timeframe, expression: T, *args, **kwargs) -> T:
       has CLOSED is delivered as the feed's own bar (the official daily/weekly/
       monthly close, high, low and volume), so ``close[1]`` is the exchange's
       close, not the chart's last bar of the period. Only the developing
-      period is built from the chart's bars. With no feed supplied an
+      period is built from the chart's bars; on a D/W/M chart the chart's own bars
+      are the official ones and nothing is replaced. With no feed supplied an
       intraday context is aggregated from the chart's own feed, and a
       D/W/M context is refused (its bars are never derived from the chart).
       Cross-symbol HTF: the developing bar cannot be aggregated
