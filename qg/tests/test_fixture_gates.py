@@ -73,11 +73,11 @@ def __test_golden_pass_and_shift_fail__(tmp_path):
 def __test_drift_identical_and_mode_control__():
     py = sys.executable
     p = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py, "--require-identical")
-    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.7 vs 6.10.10+qg.7: 0/7 jobs differ []")
+    assert (p.returncode, p.stdout.strip().splitlines()[-1]) == (0, "DRIFT 6.10.10+qg.8 vs 6.10.10+qg.8: 0/7 jobs differ []")
     q = __test_helper_gate("pynecore.qg_gates.drift", "--baseline-python", py, "--candidate-python", py,
                            "--candidate-env", "PYNE_SUM_MODE=window", "--require-identical")
     assert q.returncode == 1
-    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.7 vs 6.10.10+qg.7: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
+    assert q.stdout.strip().splitlines()[-1] == "DRIFT 6.10.10+qg.8 vs 6.10.10+qg.8: 4/7 jobs differ [gate_ta@1, gate_ta@2, gate_ta@3, gate_ta@4]"
 
 
 def __test_perf_budget_and_injection__():
