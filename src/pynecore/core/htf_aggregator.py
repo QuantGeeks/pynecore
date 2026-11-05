@@ -112,6 +112,11 @@ class HTFAggregator:
         """Currently developing HTF bar, or None if no chart bar seen yet."""
         return self._state
 
+    def period_start(self, time_ms: int) -> int:
+        """The open of the HTF period containing ``time_ms``, on this aggregator's own grid."""
+        return self._resampler.get_bar_time(
+            time_ms, self._tz, self._session_starts, self._opening_hours, self._grid_mode)
+
     def update(
         self,
         chart_time_ms: int,

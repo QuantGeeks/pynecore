@@ -98,6 +98,13 @@ class Lookahead(Enum):
         the period's last bar. PyneCore never reproduces lookahead, so a
         bare ``close`` here reads the period as it has built so far.
 
+        A feed the caller SUPPLIED for the context replaces the chart-built bar
+        of every period that has CLOSED (:func:`load_official_htf_bars`): the
+        prior period is the feed's official bar, as on TradingView. Only the
+        developing period stays chart-built. Without a supplied feed (an
+        intraday context derived from the chart's own feed) the chart-built bar
+        is the period's bar throughout.
+
         The inner-``[1]`` daily-pivot idiom
         ``request.security(sym, "D", close[1], lookahead_on)`` is unaffected
         and matches TradingView: ``close[1]`` is the just-closed prior period
@@ -544,6 +551,14 @@ class SecurityState:
     # would begin at the chart's first bar.
     htf_prefilled: bool = False
 
+    # Same-symbol HTF context whose feed the caller SUPPLIED: ``{period_start: (open,
+    # high, low, close, volume)}`` of that feed's bars, keyed on the aggregator's own
+    # period grid. The developing transport builds each period from the chart's bars,
+    # and the bar it delivers when the period CLOSES is replaced by the feed's bar
+    # (TradingView reads the symbol's own HTF bar there: the official close, not the
+    # last chart bar's). ``None`` = no feed supplied (the chart-built bar stands).
+    official_bars: 'dict[int, tuple] | None' = None
+
     # Set by ``__sec_signal__`` when an LTF chart bar precedes the feed (see
     # ``ltf_first_ms``): no handshake ran this bar, so ``__sec_read__`` returns
     # the empty-array default directly instead of waiting on shared memory.
@@ -921,6 +936,43 @@ class DevBatchSpec:
     chart_timeframe: str | None
     chart_calendar: 'BarCalendar | None'
     first_dev_only: bool = False
+    official_bars: 'dict[int, tuple] | None' = None
+
+
+def official_closed_bar(official_bars: 'dict[int, tuple] | None', closed_bar):
+    """The ``(open, high, low, close, volume)`` a closed HTF period is delivered with:
+    the supplied feed's bar for that period when there is one, else the chart-built one."""
+    if official_bars:
+        official = official_bars.get(closed_bar.period_start)
+        if official is not None:
+            return official
+    return (closed_bar.open, closed_bar.high, closed_bar.low, closed_bar.close, closed_bar.volume)
+
+
+def load_official_htf_bars(state: SecurityState, data_path: str) -> None:
+    """Read the supplied feed of a same-symbol HTF context into ``state.official_bars``.
+
+    The feed's bars are keyed on the period grid the context's aggregator uses, so
+    a closed period finds its official bar whatever timestamp convention the feed
+    stamps its daily/weekly/monthly bars with. A context without an aggregator
+    (cross-symbol, same timeframe, LTF) is left alone.
+
+    :param state: The context's state, aggregator already attached.
+    :param data_path: The context's OHLCV file (already resampled to its timeframe).
+    """
+    aggregator = state.htf_aggregator
+    if aggregator is None:
+        return
+    from .ohlcv import OHLCVReader
+    bars: dict[int, tuple] = {}
+    with OHLCVReader(data_path) as reader:
+        start_ts = reader.start_timestamp
+        if start_ts is None:
+            return
+        for candle in reader.read_from(start_ts):
+            bars[aggregator.period_start(candle.timestamp)] = (
+                candle.open, candle.high, candle.low, candle.close, candle.volume)
+    state.official_bars = bars or None
 
 
 def iter_dev_batch_records(spec: DevBatchSpec) -> 'Iterator[tuple]':
@@ -1012,8 +1064,7 @@ def iter_dev_batch_records(spec: DevBatchSpec) -> 'Iterator[tuple]':
         if closed_bar is not None:
             last_confirmed = closed_bar.period_start
             out.append((DEV_BATCH_CLOSED, closed_bar.period_start,
-                        closed_bar.open, closed_bar.high, closed_bar.low,
-                        closed_bar.close, closed_bar.volume,
+                        *official_closed_bar(spec.official_bars, closed_bar),
                         tick, sched_next_open))
         if dev_bar is not None and not (spec.first_dev_only
                                         and dev_bar.period_start == dev_period_start):
@@ -2386,10 +2437,10 @@ def create_chart_protocol(
                 if closed_bar is not None:
                     state.last_confirmed = closed_bar.period_start
 
-                    def _closed_step(_bar=closed_bar):
+                    def _closed_step(_bar=closed_bar,
+                                     _ohlcv=official_closed_bar(state.official_bars, closed_bar)):
                         sync_block.set_developing_bar(
-                            sec_id, _bar.open, _bar.high, _bar.low,
-                            _bar.close, _bar.volume, _bar.period_start,
+                            sec_id, *_ohlcv, _bar.period_start,
                         )
                         sync_block.set_flags(sec_id, (
                             sync_block.get_flags(sec_id)

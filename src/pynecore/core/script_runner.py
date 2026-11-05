@@ -1935,6 +1935,7 @@ class ScriptRunner:
             chart_timeframe=sec_state.chart_timeframe,
             chart_calendar=sec_state.chart_calendar,
             first_dev_only=sec_state.dev_skip,
+            official_bars=sec_state.official_bars,
         )
 
     def run_iter(self, on_progress: Callable[[datetime], None] | None = None,
@@ -2263,7 +2264,7 @@ class ScriptRunner:
                 from .security import (
                     setup_security_states, create_chart_protocol,
                     inject_protocol, cleanup_shared_memory, Lookahead,
-                    load_htf_bar_opens, load_ltf_first_ms, watch_security_child,
+                    load_htf_bar_opens, load_ltf_first_ms, load_official_htf_bars, watch_security_child,
                     batch_eligible, plan_historical_batch,
                     dev_batch_eligible, prepare_developing_batch, dev_skip_active,
                 )
@@ -2590,6 +2591,8 @@ class ScriptRunner:
                     # trading calendar; a live PluginSymbol stream has no static
                     # file to walk.
                     if not isinstance(data_source, PluginSymbol):
+                        supplied_feed = (self._chart_data_path is None
+                                         or Path(str(data_source)) != Path(str(self._chart_data_path)))
                         # Context fed a FINER base feed: pre-resample to the
                         # security timeframe so the child exposes one AGGREGATED
                         # bar per period (TradingView's "resampled from the chart
@@ -2617,6 +2620,13 @@ class ScriptRunner:
                                 sec_resample_dirs)
                         load_htf_bar_opens(sec_state, str(data_source))
                         load_ltf_first_ms(sec_state, str(data_source))
+                        # A feed the caller supplied for a same-symbol HTF context is the
+                        # source of its closed periods (the chart-built bar is the
+                        # fallback when none was supplied; the chart's own feed IS that
+                        # fallback's input, so it is never "supplied" here).
+                        if (supplied_feed and not sec_state.is_ltf
+                                and sec_state.lookahead is Lookahead.ON):
+                            load_official_htf_bars(sec_state, str(data_source))
                         # Historical BATCH round: the chart drives this context
                         # once for its whole historical phase and pairs the
                         # values out of the child's ring, instead of a wake-up

@@ -52,7 +52,15 @@ def security(symbol, timeframe, expression: T, *args, **kwargs) -> T:
       **differs from TradingView deliberately**: TV returns the period's
       final close on every chart bar of the period, i.e. future data
       everywhere but the period's last bar, and PyneCore does not reproduce
-      lookahead. Cross-symbol HTF: the developing bar cannot be aggregated
+      lookahead. Closed periods and the supplied feed: when the caller
+      supplies a feed for the context (``security_data``), every period that
+      has CLOSED is delivered as the feed's own bar (the official daily/weekly/
+      monthly close, high, low and volume), so ``close[1]`` is the exchange's
+      close, not the chart's last bar of the period. Only the developing
+      period is built from the chart's bars. With no feed supplied an
+      intraday context is aggregated from the chart's own feed, and a
+      D/W/M context is refused (its bars are never derived from the chart).
+      Cross-symbol HTF: the developing bar cannot be aggregated
       (wrong instrument), so a chart bar inside an open HTF period reads as
       ``na``; ``close[1]`` at the period boundary still delivers the
       just-closed cross-symbol HTF close, so the idiom continues to work.
