@@ -2187,8 +2187,9 @@ def pivot_point_levels(type: str, anchor: bool, developing: bool = False) -> lis
     rng = h - l
 
     # Calculate levels based on type
-    if type_lower in ("traditional", "classic"):
-        # Traditional/Classic Pivot Points
+    if type_lower == "traditional":
+        # Traditional Pivot Points: the outer levels step by whole multiples of P
+        # (R4 = 3P + (H - 3L), R5 = 4P + (H - 4L), S4 = 3P - (3H - L), S5 = 4P - (4H - L))
         p = (h + l + c) / 3
         r1 = 2 * p - l
         s1 = 2 * p - h
@@ -2196,7 +2197,19 @@ def pivot_point_levels(type: str, anchor: bool, developing: bool = False) -> lis
         s2 = p - rng
         r3 = r1 + rng
         s3 = s1 - rng
-        levels = [p, r1, s1, r2, s2, r3, s3, na_float, na_float, na_float, na_float]
+        r4 = 3 * p + (h - 3 * l)
+        s4 = 3 * p - (3 * h - l)
+        r5 = 4 * p + (h - 4 * l)
+        s5 = 4 * p - (4 * h - l)
+        levels = [p, r1, s1, r2, s2, r3, s3, r4, s4, r5, s5]
+
+    elif type_lower == "classic":
+        # Classic Pivot Points: P plus whole multiples of the range; no level 5
+        p = (h + l + c) / 3
+        r1 = 2 * p - l
+        s1 = 2 * p - h
+        levels = [p, r1, s1, p + rng, p - rng, p + 2 * rng, p - 2 * rng, p + 3 * rng, p - 3 * rng,
+                  na_float, na_float]
 
     elif type_lower == "fibonacci":
         # Fibonacci Pivot Points
@@ -2223,7 +2236,8 @@ def pivot_point_levels(type: str, anchor: bool, developing: bool = False) -> lis
         s2 = p - rng
         r3 = r1 + rng
         s3 = s1 - rng
-        levels = [p, r1, s1, r2, s2, r3, s3, na_float, na_float, na_float, na_float]
+        # Woodie has levels 1-4; R4/S4 step one more range past R3/S3
+        levels = [p, r1, s1, r2, s2, r3, s3, r3 + rng, s3 - rng, na_float, na_float]
 
     elif type_lower == "dm":
         # DeMark Pivot Points
@@ -2255,8 +2269,10 @@ def pivot_point_levels(type: str, anchor: bool, developing: bool = False) -> lis
         s3 = c - rng * 1.1 / 4
         r4 = c + rng * 1.1 / 2
         s4 = c - rng * 1.1 / 2
-        # Camarilla has P, R1-R4, S1-S4 (no R5, S5)
-        levels = [p, r1, s1, r2, s2, r3, s3, r4, s4, na_float, na_float]
+        # Level 5 is the ratio level: R5 = H / L * C, S5 mirrored about the close
+        r5 = h / l * c if l != 0 else na_float
+        s5 = c - (r5 - c) if l != 0 else na_float
+        levels = [p, r1, s1, r2, s2, r3, s3, r4, s4, r5, s5]
 
     else:
         # Unknown type - return all NA

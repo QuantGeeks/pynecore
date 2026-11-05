@@ -15,7 +15,7 @@ that is not a number is ``na``.
 from typing import Any
 
 from ..types.na import na_int, na_float
-from ..types.pine_types import PyneFloat, PyneInt, pine_int
+from ..types.pine_types import PyneFloat, PyneInt
 
 __all__ = ['bar_coord', 'price']
 
@@ -26,7 +26,8 @@ def bar_coord(value: Any) -> PyneInt:
     :param value: The coordinate the script passed.
     :return: The truncated coordinate, or ``na`` when it is not a number.
     """
-    return pine_int(int(value)) if isinstance(value, (int, float)) and value == value else na_int
+    # A coordinate is a whole bar index or time: an int, not the double a Pine int is elsewhere
+    return int(value) if isinstance(value, (int, float)) and value == value and value not in (float("inf"), float("-inf")) else na_int
 
 
 def price(value: Any) -> PyneFloat:

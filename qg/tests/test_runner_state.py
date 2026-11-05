@@ -7,7 +7,7 @@ FIVE = ("rich", "_log_console", "_log_console_width", "_stdout_is_tty", "handler
 def __test_tracked_names_count_is_environment_independent__(monkeypatch):
     """ 427 everywhere, and none of pynecore.lib.log's five rich-dependent names """
     names = rs.tracked_names()
-    assert len(names) == 440
+    assert len(names) == 442
     assert not [n for n in names if n.startswith("pynecore.lib.log:") and
                 n.split(":", 1)[1] in FIVE]
     # Negative control: with the exclusion emptied and the scan recomputed, the

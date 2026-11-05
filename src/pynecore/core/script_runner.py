@@ -1210,7 +1210,7 @@ class ScriptRunner:
                  '_config_dir', '_symbol_map', '_script_timeframe',
                  '_chart_bar_window',
                  'broker_balance', '_sim_logged_open_ids', '_inputs', '_settings', '_live',
-                 '_yield_intrabar')
+                 '_yield_intrabar', '_event_data')
 
     # noinspection PyProtectedMember
     def __init__(self, script_path: Path, ohlcv_iter: Iterable[OHLCV], syminfo: SymInfo, *,
@@ -1224,6 +1224,7 @@ class ScriptRunner:
                  inputs: dict[str, Any] | None = None,
                  settings: dict[str, Any] | None = None,
                  security_data: 'dict[str, str | Path | PluginSymbol] | None' = None,
+                 event_data: 'dict[str, Iterable[dict]] | None' = None,
                  magnifier_iter: Iterable[OHLCV] | None = None,
                  magnifier_source_tf: str | None = None,
                  broker_plugin: 'BrokerPlugin | None' = None,
@@ -1291,6 +1292,10 @@ class ScriptRunner:
                               OHLCV file paths for request.security() contexts.
                               Examples: ``{"1D": "path/to/daily.ohlcv"}`` or
                               ``{"AAPL:1H": "path/to/aapl_1h.ohlcv"}``
+        :param event_data: Optional corporate events for ``request.earnings``, ``request.dividends`` and
+                           ``request.splits``: ``{"[EXCHANGE:SYMBOL:]KIND": rows}``, rows being mappings with a
+                           ``time`` and the kind's fields (see :mod:`pynecore.core.event_data`). Without it the
+                           three requests are unfed, as before.
         :param magnifier_iter: Optional sub-timeframe OHLCV iterator for bar magnifier mode.
                                When provided with use_bar_magnifier=true, order fills are checked
                                against each sub-bar for more accurate backtesting.
@@ -1336,6 +1341,8 @@ class ScriptRunner:
         """
         self._script_path = script_path
         self._security_data = security_data or {}
+        from .event_data import build_event_data
+        self._event_data = build_event_data(event_data)
         self._magnifier_iter = magnifier_iter
         self._magnifier_source_tf = magnifier_source_tf
         self._chart_bar_window = chart_bar_window
@@ -1935,6 +1942,7 @@ class ScriptRunner:
             chart_timeframe=sec_state.chart_timeframe,
             chart_calendar=sec_state.chart_calendar,
             first_dev_only=sec_state.dev_skip,
+            official_bars=sec_state.official_bars,
         )
 
     def run_iter(self, on_progress: Callable[[datetime], None] | None = None,
@@ -2197,6 +2205,7 @@ class ScriptRunner:
             security_data=_legacy_file_paths,
             chart_syminfo=self.syminfo,
         )
+        request._event_data = self._event_data
 
         # Root keys of this run, discarded in the finally block (declared before
         # the try so the cleanup is safe on any early failure)
@@ -2263,7 +2272,7 @@ class ScriptRunner:
                 from .security import (
                     setup_security_states, create_chart_protocol,
                     inject_protocol, cleanup_shared_memory, Lookahead,
-                    load_htf_bar_opens, load_ltf_first_ms, watch_security_child,
+                    load_htf_bar_opens, load_ltf_first_ms, load_official_htf_bars, watch_security_child,
                     batch_eligible, plan_historical_batch,
                     dev_batch_eligible, prepare_developing_batch, dev_skip_active,
                 )
@@ -2590,6 +2599,8 @@ class ScriptRunner:
                     # trading calendar; a live PluginSymbol stream has no static
                     # file to walk.
                     if not isinstance(data_source, PluginSymbol):
+                        supplied_feed = (self._chart_data_path is None
+                                         or Path(str(data_source)) != Path(str(self._chart_data_path)))
                         # Context fed a FINER base feed: pre-resample to the
                         # security timeframe so the child exposes one AGGREGATED
                         # bar per period (TradingView's "resampled from the chart
@@ -2617,6 +2628,18 @@ class ScriptRunner:
                                 sec_resample_dirs)
                         load_htf_bar_opens(sec_state, str(data_source))
                         load_ltf_first_ms(sec_state, str(data_source))
+                        # A feed the caller supplied for a same-symbol HTF context is the
+                        # source of its closed periods (the chart-built bar is the
+                        # fallback when none was supplied; the chart's own feed IS that
+                        # fallback's input, so it is never "supplied" here).
+                        # Not on a D/W/M chart (``chart_off`` 0): there a period is delivered with
+                        # the first bar of the next one and shares its close instant with the
+                        # previous bar's developing value, so replacing it would make that
+                        # bar's read depend on which of the two entries the batch ring has
+                        # published yet. The chart's own daily bars ARE the official ones there.
+                        if (supplied_feed and not sec_state.is_ltf and sec_state.chart_off > 0
+                                and sec_state.lookahead is Lookahead.ON):
+                            load_official_htf_bars(sec_state, str(data_source))
                         # Historical BATCH round: the chart drives this context
                         # once for its whole historical phase and pairs the
                         # values out of the child's ring, instead of a wake-up

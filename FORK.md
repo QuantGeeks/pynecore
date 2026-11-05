@@ -43,7 +43,12 @@ system work.)
 | feat(core): per-runner state for co-resident runners | spec §4.2, §4.9 | not filed (sev, 2026-10-31); write-up qg/upstream/per-runner-state.md | carried |
 | test(ast): the lib-route registry scan skips the fork's qg_gates scripts | gates package layout (Plan 2 Task 4; Review Focus 5) | not filed (sev, 2026-10-31) | carried |
 | fix(lib): syminfo mirrors every SymInfo slot at import | spec §4.2, §13.1 gate 2 (Plan 2 Task 7) | not filed (sev, 2026-10-31); write-up qg/upstream/syminfo-slots-at-import.md | carried |
-| feat(core): yield_intrabar for live runners | spec §1.5, §7.1 (forming values) | not filed (sev, 2026-10-31); write-up qg/upstream/intrabar-yield.md | carried, default off |
+| feat(core): yield_intrabar for live runners; release 6.10.10-qg.7 | spec §1.5, §7.1 (forming values) | not filed (sev, 2026-10-31); write-up qg/upstream/intrabar-yield.md | carried, default off |
+| fix(ta): pivot_point_levels returns every level each type defines | indicator port gap B | not filed (sev, 2026-10-31); write-up qg/upstream/pivot-levels-outer.md | carried |
+| fix(security): a supplied same-symbol HTF feed is the source of its closed periods | indicator port gap C | not filed (sev, 2026-10-31); write-up qg/upstream/htf-supplied-feed.md | carried |
+| feat(request): earnings, dividends and splits read the event series the runner is given | indicator port gap A | not filed (sev, 2026-10-31); write-up qg/upstream/event-requests.md | carried |
+| fix(input): input.int and drawing coordinates are Python ints | indicator port gap D | not filed (sev, 2026-10-31); write-up qg/upstream/int-input.md | carried |
+| feat(core): engine gaps from an indicator port (pivot levels, HTF feed, event series, int inputs); release 6.10.10-qg.8 | the four rows above, as one squash | not filed (sev, 2026-10-31); write-ups as above | carried |
 
 ## Engine findings without a patch
 
@@ -60,7 +65,7 @@ system work.)
 - **GATE1** proves co-resident runners equal their solo runs, batch and live: `GATE1 batch 0/7 live 0/7`. Control: `--control` drops the per-step activate and must print `GATE1 CONTROL corrupted <k>/<n>` (exit 0 only when k > 0).
 - **GATE2** proves no unmanaged state survives a run (warm pass, then sequential and interleaved forms with a fresh state installed before each fingerprint, and a two-series data-dependence probe): `GATE2 steady 0 interleaved 0 data-dependent 0`. The walker records `typing` aliases as leaves and never walks `pynecore.transformers` (two rulings of 2026-10-31: the walk was otherwise `__pycache__`-dependent).
 - **GATE3** proves co-resident runners equal per-process pristine runs (`pristine.py`, plain PyneCore, one process each) over K=6 random-partner trials plus one trio trial per script: `GATE3 total mismatching runners 0/46` on Layer A.
-- **GATE4** pins the static state inventory: `GATE4 inventory unchanged (3587 paths)`. `qg/gates/inventory.json` is updated by re-running `gate4_inventory --write` in the Linux candidate image and committing it in the same PR — that diff is the person's review (spec §13.1); the CI never rewrites it.
+- **GATE4** pins the static state inventory: `GATE4 inventory unchanged (3617 paths)`. `qg/gates/inventory.json` is updated by re-running `gate4_inventory --write` in the Linux candidate image and committing it in the same PR — that diff is the person's review (spec §13.1); the CI never rewrites it.
 
 - **GOLDEN** (Task 5; Task 11: full-header `tv_index`, X0; private CI with `--root` and Plan 1 Task 12's `golden.json`): our values against a TradingView export, column by column — the spec is a JSON list of `{"script","stem","columns":[{"tv_index","plot","shift"}]}` with optional `inputs` (default `{}`), `sum_mode` (default `"compensated"`, ruling 9) and `warmup_bars` (default 1500, the tvtruth method); the column mapping is written once by `tv_index`, the E2 `shift` is applied in the harness.  Per column `GOLDEN <script> <stem> [<tv_index>→<plot>]: exact <a>/<n> rel9 <b>/<n>`; a column passes iff rel9 covers every compared bar; `GOLDEN PASS <c> columns` / `GOLDEN FAIL <k> of <c> columns`.
 - **E1** (Task 5; Task 8: `--warmup 39`): `e1_gate --root --reference <stem> --further '<glob>' --expect-window 41301 --expect-compensated 428` runs `scripts/e1_sma40.py` in both sum modes on each export's own bars (each mode its own process) and compares with column index 6 **from bar 39, the first bar the script can compute (its length − 1)** — a custom-range export carries TradingView's prior-history values in its first 39 cells, where the script on the export's own bars is na (measured 2026-11-01: the NVDA 5m and SPX 1D further exports were each short by exactly 39 bars).  The reproduction holds on the reference when the window mode is exact on every compared bar and the compensated machine is not (`E1 REPRODUCTION FAIL …`, exit 1, otherwise); the gate prints `E1 GATE (§9.2): PASSED` once **two further exports agree** — until then `… <k> of 2 further exports agree; window mode stays off by default` (both exit 0): the window mode becomes the default only after PASSED (README ruling 9 — the flip is its own ruling; the default stays `compensated`).  With `--warmup 0` the comparison starts at bar 0 (the Task 5 behaviour, explicit).
@@ -70,7 +75,7 @@ Negative controls in CI (`gates-negative` job): the gate1 control above, and the
 
 ## Releases and the service pin
 
-The release tag is `6.10.10-qg.7`, the package version `6.10.10+qg.7` (PEP 440;
+The release tag is `6.10.10-qg.8`, the package version `6.10.10+qg.8` (PEP 440;
 spec §4.9). Never a GitHub Release (it triggers upstream's PyPI workflow); the
 tag push and the rebase force-push are operator steps — `UPGRADING.md` is the
 procedure, step by step.
@@ -79,10 +84,10 @@ The service pins the tag exactly (Task 6):
 
 ```toml
 [project]
-dependencies = ["pynesys-pynecore==6.10.10+qg.7"]
+dependencies = ["pynesys-pynecore==6.10.10+qg.8"]
 
 [tool.uv.sources]
-pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.7" }
+pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.8" }
 ```
 
 `uv lock` records the tag's commit sha; the image needs a C compiler (Cython

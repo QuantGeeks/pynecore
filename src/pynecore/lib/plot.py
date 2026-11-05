@@ -78,6 +78,12 @@ def plot(series: Any, title: str | None = None, color: Any = None, linewidth: in
         t = title + ' ' + str(c)
         c += 1
 
+    if type(series) is int:
+        # An exact int (an input.int accumulated) too large for a double plots as the double it would be: inf
+        try:
+            float(series)
+        except OverflowError:
+            series = float('inf') if series > 0 else float('-inf')
     lib._plot_data[t] = series
     meta = lib._plot_meta.get(t)
     if meta is None:
