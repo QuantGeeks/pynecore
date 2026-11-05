@@ -138,7 +138,10 @@ def _float_field(v: Any) -> Any:
     if v is None or isinstance(v, NA):
         return None
     if type(v) is int:
-        return float(v)
+        try:
+            return float(v)
+        except OverflowError:  # an exact int beyond a double: what a double would be
+            return math.inf if v > 0 else -math.inf
     return v
 
 
