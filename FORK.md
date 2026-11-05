@@ -43,7 +43,7 @@ system work.)
 | feat(core): per-runner state for co-resident runners | spec §4.2, §4.9 | not filed (sev, 2026-10-31); write-up qg/upstream/per-runner-state.md | carried |
 | test(ast): the lib-route registry scan skips the fork's qg_gates scripts | gates package layout (Plan 2 Task 4; Review Focus 5) | not filed (sev, 2026-10-31) | carried |
 | fix(lib): syminfo mirrors every SymInfo slot at import | spec §4.2, §13.1 gate 2 (Plan 2 Task 7) | not filed (sev, 2026-10-31); write-up qg/upstream/syminfo-slots-at-import.md | carried |
-| feat(core): yield_intrabar for live runners | spec §1.5, §7.1 (forming values) | not filed (sev, 2026-10-31); write-up qg/upstream/intrabar-yield.md | carried, default off |
+| feat(core): yield_intrabar for live runners; release 6.10.10-qg.7 | spec §1.5, §7.1 (forming values) | not filed (sev, 2026-10-31); write-up qg/upstream/intrabar-yield.md | carried, default off |
 | fix(ta): pivot_point_levels returns every level each type defines | Pulse port gap B | not filed (sev, 2026-10-31); write-up qg/upstream/pivot-levels-outer.md | carried |
 | fix(security): a supplied same-symbol HTF feed is the source of its closed periods | Pulse port gap C | not filed (sev, 2026-10-31); write-up qg/upstream/htf-supplied-feed.md | carried |
 | feat(request): earnings, dividends and splits read the event series the runner is given | Pulse port gap A | not filed (sev, 2026-10-31); write-up qg/upstream/event-requests.md | carried |
