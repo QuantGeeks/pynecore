@@ -15,7 +15,7 @@ that is not a number is ``na``.
 from typing import Any
 
 from ..types.na import na_int, na_float
-from ..types.pine_types import PyneFloat, PyneInt, pine_int
+from ..types.pine_types import PyneFloat, PyneInt
 
 __all__ = ['bar_coord', 'price']
 
