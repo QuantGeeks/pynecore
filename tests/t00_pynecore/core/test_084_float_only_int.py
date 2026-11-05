@@ -2,7 +2,7 @@
 @pyne
 
 A Pine int is a double at runtime. Every int-typed value a script sees -- the
-bar index, an ``input.int``, a cast, a count, a counter, a ``for`` loop
+bar index, a cast, a count, a counter, a ``for`` loop
 counter, an int series' history -- arrives as a native float, and the numeric
 na of an int is the same nan a float has. A Python-native consumer of such a
 value (``range()``) is truncated by the pipeline.
@@ -44,10 +44,11 @@ def __test_every_int_typed_value_is_a_float__(csv_reader, runner):
     """The bar index, inputs, casts, counts and int series all travel as floats"""
     with csv_reader('series_if_for.csv', subdir="data") as cr:
         for i, (candle, plot) in enumerate(runner(cr).run_iter()):
-            for key in ("bar_index", "length", "count", "cast", "floor", "size", "first"):
+            for key in ("bar_index", "count", "cast", "floor", "size", "first"):
                 assert type(plot[key]) is float, f"bar {i}: {key} is {plot[key]!r}"
             assert plot["bar_index"] == i
-            assert plot["length"] == 3
+            # QuantGeeks fork (qg.8): an input.int is a Python int, not a double
+            assert type(plot["length"]) is int and plot["length"] == 3
             assert plot["count"] == i + 1
             assert plot["cast"] == i // 2
             assert plot["floor"] == 2

@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload, overload as _typing_ov
 from ..types.footprint import Footprint
 from ..types.na import NA
 from . import syminfo
-from ..core.event_data import EventSeries, event_value
 
 if TYPE_CHECKING:
     from ..core.currency import CurrencyRateProvider
+    from ..core.event_data import EventSeries
 
 _currency_provider: CurrencyRateProvider | None = None
 
@@ -189,6 +189,7 @@ def _event_lookup(kind: str, ticker, field, gaps, lookahead) -> 'float | None':
     if not data:
         return None
     from . import barmerge
+    from ..core.event_data import event_value
     symbol = str(ticker) if ticker else str(syminfo.tickerid)
     series = data.get(f"{symbol}:{kind}")
     if series is None and symbol == str(syminfo.tickerid):

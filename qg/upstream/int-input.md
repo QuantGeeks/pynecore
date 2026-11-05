@@ -22,3 +22,11 @@ Other int-typed values (`bar_index`, `time`, `year()`...) stay doubles; not in s
 are `int`, label x is `int`, the snapshot spells them as integers.
 
 Not filed (sev, 2026-10-31): nothing is pushed upstream.
+
+## Upstream tests this reverses
+
+Upstream pins the double-int policy: `tests/t00_pynecore/core/test_084_float_only_int.py` (an `input.int` is a
+`float`) and `tests/t01_lib/t10_drawing/test_006_coordinate_na.py` (a stored drawing coordinate is a `float`).
+The fork edits those three assertions to `int` (marked "QuantGeeks fork (qg.8)" in the files) and keeps every
+other int-typed value (`bar_index`, casts, counts, `time`) a double. A rebase onto an upstream that changes
+either file needs a manual merge.

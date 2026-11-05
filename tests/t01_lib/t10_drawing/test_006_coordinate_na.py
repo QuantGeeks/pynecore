@@ -36,7 +36,7 @@ def __test_a_line_setter_normalizes_like_the_constructor__():
     line.set_x1(ln, 12.75)
     line.set_x2(ln, 20.9)
     assert line.get_x1(ln) == 12 and line.get_x2(ln) == 20
-    assert type(line.get_x1(ln)) is float
+    assert type(line.get_x1(ln)) is int  # QuantGeeks fork (qg.8): a drawing coordinate is a whole number, an int
 
     # ... and the same through the pair and the xloc setters
     line.set_xy1(ln, 3.5, 1.5)
@@ -67,7 +67,7 @@ def __test_a_box_setter_normalizes__():
 
     box.set_rightbottom(bx, 30.75, 0.5)
     assert box.get_right(bx) == 30 and box.get_bottom(bx) == 0.5
-    assert type(box.get_right(bx)) is float
+    assert type(box.get_right(bx)) is int  # QuantGeeks fork (qg.8): a drawing coordinate is a whole number, an int
 
     box.set_left(bx, 5.9)
     assert box.get_left(bx) == 5
@@ -84,4 +84,4 @@ def __test_a_label_setter_normalizes__():
 
     label.set_x(lbl, 8.9)
     assert label.get_x(lbl) == 8
-    assert type(label.get_x(lbl)) is float
+    assert type(label.get_x(lbl)) is int  # QuantGeeks fork (qg.8): a drawing coordinate is a whole number, an int
