@@ -47,7 +47,7 @@ EVENT_FIELDS = {
 class EventSeries:
     """The rows of one event series, sorted by time, with the day index of the last timezone asked."""
 
-    __slots__ = ('kind', 'times', 'rows', '_tz_name', '_days', 'bar', 'bar_ms', 'prev_ms')
+    __slots__ = ('kind', 'times', 'rows', '_tz_name', '_days')
 
     def __init__(self, kind: str, rows: list[tuple[int, Mapping[str, float | None]]]):
         rows = sorted(rows, key=lambda r: r[0])
@@ -56,10 +56,6 @@ class EventSeries:
         self.rows = [r for _, r in rows]
         self._tz_name: str | None = None
         self._days: list[int] = []
-        # the last two bars this series was read on (gaps_on compares them)
-        self.bar = -1
-        self.bar_ms: int | None = None
-        self.prev_ms: int | None = None
 
     def days(self, tz_name: str) -> list[int]:
         """The proleptic ordinal of each row's calendar day in the timezone (cached per timezone)."""
@@ -119,38 +115,48 @@ def _visible(days: list[int], day: int, last_bar_of_day: bool, lookahead_on: boo
     return i
 
 
-def event_value(series: EventSeries, field: str | None, bar_dt: datetime, bar_index: int, bar_ms: int,
-                is_last_bar_of_day: bool, gaps_on: bool, lookahead_on: bool, tz_name: str) -> float:
+def event_value(series: EventSeries, field: str | None, bar_dt: datetime, prev_time_ms: int | None,
+                next_time_ms: int | None, is_last_bar_of_day: bool, gaps_on: bool, lookahead_on: bool,
+                tz_name: str) -> float:
     """
     The value of an event series on the current bar.
+
+    The previous and next bars come from the CHART, not from the bars this series happened to be read on, so a
+    request inside an ``if`` sees the same value a request on every bar would.
 
     :param series: The event series
     :param field: The field to read (``None``: na)
     :param bar_dt: The current bar's open, in the exchange timezone
-    :param bar_index: The current bar's index
-    :param bar_ms: The current bar's open (UTC ms); the previous READ bar is remembered by the series
+    :param prev_time_ms: The previous chart bar's open (UTC ms), ``None`` on the first bar
+    :param next_time_ms: The next chart bar's expected open for a chart coarser than one day (a bar then
+        covers several calendar days and sees every event up to its last one), otherwise ``None``
     :param is_last_bar_of_day: Whether the current bar is its session's last (``session.islastbar``)
     :param gaps_on: ``barmerge.gaps_on``
     :param lookahead_on: ``barmerge.lookahead_on``
     :param tz_name: The exchange timezone
     :return: The field's value, or na
     """
-    if bar_index != series.bar:
-        series.prev_ms, series.bar_ms, series.bar = series.bar_ms, bar_ms, bar_index
-    prev_time_ms = series.prev_ms
     days = series.days(tz_name)
+    tz = _zone(tz_name)
     bar_day = bar_dt.date().toordinal()
-    cur = _visible(days, bar_day, is_last_bar_of_day, lookahead_on)
-    if cur < 0 or field is None:
-        return nan
-    if gaps_on:
+    if next_time_ms is not None:
+        # coarse bar: it is over on the day before the next bar opens; the previous bar was over the day
+        # before this one opened
+        bar_day = datetime.fromtimestamp((next_time_ms - 1) / 1000, tz).date().toordinal()
+        prev_day = datetime.fromtimestamp(bar_dt.timestamp() - 0.001, tz).date().toordinal()
+        cur = _visible(days, bar_day, True, lookahead_on)
+        prev = -1 if prev_time_ms is None else _visible(days, prev_day, True, lookahead_on)
+    else:
+        cur = _visible(days, bar_day, is_last_bar_of_day, lookahead_on)
         if prev_time_ms is None:
             prev = -1
         else:
-            prev_day = datetime.fromtimestamp(prev_time_ms / 1000, _zone(tz_name)).date().toordinal()
+            prev_day = datetime.fromtimestamp(prev_time_ms / 1000, tz).date().toordinal()
             # the previous bar was the last of its day when the current one is on a later day
             prev = _visible(days, prev_day, bar_day > prev_day, lookahead_on)
-        if cur <= prev:
-            return nan
+    if cur < 0 or field is None:
+        return nan
+    if gaps_on and cur <= prev:
+        return nan
     value = series.rows[cur].get(field)
     return nan if value is None else value

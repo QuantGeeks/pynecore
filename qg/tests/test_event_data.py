@@ -106,3 +106,47 @@ def __test_no_event_data_keeps_the_old_behavior__():
     ignore_invalid_symbol), exactly as before."""
     with pytest.raises(NotImplementedError):
         _run(None)
+
+
+def _run_script(script, bars, period, event_data):
+    path = SCRIPT.with_name(script)
+    sys.modules.pop(path.stem, None)
+    si = default_syminfo()
+    si.period = period
+    si.type = "stock"
+    r = ScriptRunner(script_path=path, ohlcv_iter=iter(bars), syminfo=si, event_data=event_data)
+    return [(c.timestamp, dict(p)) for c, p in r.run_iter()]
+
+
+def __test_a_weekly_bar_sees_the_events_of_all_its_days__():
+    """A 1W bar (Mon 2024-12-30, 01-06, 01-13...) contains the Wednesday 01-08 report: lookahead_on and _off
+    both show it on THAT bar (its last day is Sunday 01-12), gaps_on on that bar only."""
+    monday = T0 - 2 * DAY
+    bars = [OHLCV(monday + w * 7 * DAY, 10.0, 11.0, 9.0, 10.5, 1.0) for w in range(6)]
+    events = {"dividends": [], "splits": [],
+              "earnings": [{"time": T0 + 7 * DAY + 12 * HOUR, "actual": 1.5},
+                           {"time": T0 + 15 * DAY + 12 * HOUR, "actual": 2.0}]}
+    rows = [p for _, p in _run_script("events.py", bars, "1W", events)]
+    for name in ("e_default", "e_on"):
+        got = [None if _na(r[name]) else r[name] for r in rows]
+        assert got == [None, 1.5, 2.0, 2.0, 2.0, 2.0], (name, got)
+    got = [None if _na(r["e_on_gaps"]) else r["e_on_gaps"] for r in rows]
+    assert got == [None, 1.5, 2.0, None, None, None], got
+    got = [None if _na(r["e_off_gaps"]) else r["e_off_gaps"] for r in rows]
+    assert got == [None, 1.5, 2.0, None, None, None], got
+
+
+def __test_gaps_on_does_not_depend_on_which_bars_ask__():
+    """The event shows on the bar it arrives on, wherever the request sits: asked only on even bars it is
+    dropped when it arrives on an odd bar (the merged series is the same either way), never deferred to the
+    next bar that asks."""
+    bars = [OHLCV(T0 + i * DAY, 10.0, 11.0, 9.0, 10.5, 1.0) for i in range(8)]
+    events = {"earnings": [{"time": T0 + 2 * DAY, "actual": 1.5},   # arrives on bar 2 (even)
+                           {"time": T0 + 5 * DAY, "actual": 2.0}]}  # arrives on bar 5 (odd)
+    out = _run_script("events_if.py", bars, "1D", events)
+    even = [None if _na(p["even_only"]) else p["even_only"] for _, p in out]
+    # (nothing else reads the series: the old "previous READ bar" rule deferred the bar-5 event to bar 6)
+    assert even == [None, None, 1.5, None, None, None, None, None], even
+    # a second run starts clean (no state kept on the series)
+    again = _run_script("events_if.py", bars, "1D", events)
+    assert [None if _na(p["even_only"]) else p["even_only"] for _, p in again] == even

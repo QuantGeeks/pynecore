@@ -201,10 +201,13 @@ def _event_lookup(kind: str, ticker, field, gaps, lookahead) -> 'float | None':
     if (lib := _lib) is None:
         from .. import lib
         _lib = lib
+    from . import timeframe
     # noinspection PyProtectedMember
-    return event_value(series, name, lib._datetime, int(lib.bar_index), int(lib._time),
-                       bool(lib.session.islastbar()), gaps is barmerge.gaps_on,
-                       lookahead is barmerge.lookahead_on, str(syminfo.timezone))
+    prev_ms = lib._chart_bar_open(1)
+    # noinspection PyProtectedMember
+    next_ms = lib._chart_bar_open(-1) if timeframe.in_seconds(syminfo.period) > 86400 else None
+    return event_value(series, name, lib._datetime, prev_ms, next_ms, bool(lib.session.islastbar()),
+                       gaps is barmerge.gaps_on, lookahead is barmerge.lookahead_on, str(syminfo.timezone))
 
 
 # Pine signature parity: the data source is not implemented, so most parameters go unread
