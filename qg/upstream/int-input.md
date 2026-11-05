@@ -16,8 +16,13 @@ doubles of int fields as ints; the objects themselves did not hold ints.)
 non-finite value; arithmetic derived from it is Python int arithmetic. `lib._drawing.bar_coord` returns `int`.
 Other int-typed values (`bar_index`, `time`, `year()`...) stay doubles; not in scope.
 
+Integer arithmetic derived from an input is exact Python arithmetic, not a double and not a 64-bit integer: a
+product beyond a double's range is a bigint until it reaches a float sink (the plot value, the viz record, a
+`Series[float]`), where it becomes `inf` / `-inf` as the double did (`lib/plot.py`, `viz._float_field`).
+
 ## Tests
 
+`qg/tests/test_int_overflow.py`: a 300-step accumulation plots inf, and the viz record writes null.
 `qg/tests/test_int_input.py`: default and settings values print `2|8|10` (not `2.0|8.0|10.0`), line width and x
 are `int`, label x is `int`, the snapshot spells them as integers.
 

@@ -25,9 +25,23 @@ carries the new paths.
 `qg/tests/test_event_data.py`: hourly chart, two earnings rows, one dividend, one split; all four gaps/lookahead
 combinations hour by hour, the fields, key resolution, other symbols, no data.
 
+## Known differences from TradingView (approximations, not measured)
+
+* **Release time.** TradingView's manual says these values "reflect the data available as it comes in", i.e. at
+  the release. This module merges a daily series: `lookahead_off` shows an event from the END of its calendar day,
+  `lookahead_on` from the START of it. An after-hours report therefore appears on the day's last bar, not at the
+  release minute, and the first bar of the day sees it under `lookahead_on`.
+* **Timezone.** The day of an event (and of a bar) is taken in the CHART symbol's exchange timezone, also for a
+  series requested for another symbol whose exchange runs in a different zone.
+* **Currency.** The `currency` argument is accepted and ignored; values are returned as supplied.
+* **Charts coarser than 1D.** A bar sees every event up to its last calendar day (the day before the next bar
+  opens, the next open being the chart's expected one), so `lookahead_on` and `lookahead_off` agree there.
+* **Splits** have no default field (Pine has none either): without one the request is na.
+* **Which bars ask** does not matter: the previous and next bars come from the chart, so a request inside an `if`
+  returns what a request on every bar returns on the bars it runs.
+
 ## Not settled
 
 The daily-series merge rule is inferred from how TradingView sources these feeds (daily corporate-action series
 read through `request.security`); the reference gives parameters and field names, not the intraday timing, and no
-TradingView export of these requests was available. `gaps_on` compares the bar with the previous bar the series
-was READ on. Not filed (sev, 2026-10-31): nothing is pushed upstream.
+TradingView export of these requests was available. Not filed (sev, 2026-10-31): nothing is pushed upstream.
