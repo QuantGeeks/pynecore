@@ -693,6 +693,24 @@ class Script:
 script = Script
 
 
+def _input_int(value: Any) -> Any:
+    """
+    An ``input.int`` value as a Python ``int``.
+
+    A Pine int is a double at runtime elsewhere in the engine, but an input is a user-chosen whole
+    number: handing it back as a ``float`` made every drawing coordinate, width and offset derived from
+    it a float (``2.0``, ``40959.0``) where TradingView keeps them integers. An unusable value (na, nan,
+    inf) is na.
+
+    :param value: The default or the value from the settings file
+    :return: ``int(value)``, or na for a value that is not a finite number
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return na_int
+
+
 class _Input:
     """
     Input functions
@@ -743,8 +761,8 @@ class _Input:
             value = _old_input_values[_id]
             if input_type == 'color' and isinstance(value, str):
                 return Color(value)
-            return safe_convert.safe_int(value) if input_type == 'int' else value
-        return float(defval) if input_type == 'int' else defval
+            return _input_int(value) if input_type == 'int' else value
+        return _input_int(defval) if input_type == 'int' else defval
 
     # Pine's numeric inputs have TWO positional overloads after ``title``: the
     # minval/maxval/step form and the options form. A single Python parameter
@@ -828,8 +846,8 @@ class _Input:
             display=kwargs.get('display'),
         )
         if _id in _old_input_values:
-            return safe_convert.safe_int(_old_input_values[_id])
-        return pine_int(defval) if defval == defval else na_int
+            return _input_int(_old_input_values[_id])
+        return _input_int(defval)
 
     # ``active`` is UI-only in Pine: accepted for signature parity, never read
     # noinspection PyUnusedParameter
