@@ -1210,7 +1210,7 @@ class ScriptRunner:
                  '_config_dir', '_symbol_map', '_script_timeframe',
                  '_chart_bar_window',
                  'broker_balance', '_sim_logged_open_ids', '_inputs', '_settings', '_live',
-                 '_yield_intrabar')
+                 '_yield_intrabar', '_event_data')
 
     # noinspection PyProtectedMember
     def __init__(self, script_path: Path, ohlcv_iter: Iterable[OHLCV], syminfo: SymInfo, *,
@@ -1224,6 +1224,7 @@ class ScriptRunner:
                  inputs: dict[str, Any] | None = None,
                  settings: dict[str, Any] | None = None,
                  security_data: 'dict[str, str | Path | PluginSymbol] | None' = None,
+                 event_data: 'dict[str, Iterable[dict]] | None' = None,
                  magnifier_iter: Iterable[OHLCV] | None = None,
                  magnifier_source_tf: str | None = None,
                  broker_plugin: 'BrokerPlugin | None' = None,
@@ -1291,6 +1292,10 @@ class ScriptRunner:
                               OHLCV file paths for request.security() contexts.
                               Examples: ``{"1D": "path/to/daily.ohlcv"}`` or
                               ``{"AAPL:1H": "path/to/aapl_1h.ohlcv"}``
+        :param event_data: Optional corporate events for ``request.earnings``, ``request.dividends`` and
+                           ``request.splits``: ``{"[EXCHANGE:SYMBOL:]KIND": rows}``, rows being mappings with a
+                           ``time`` and the kind's fields (see :mod:`pynecore.core.event_data`). Without it the
+                           three requests are unfed, as before.
         :param magnifier_iter: Optional sub-timeframe OHLCV iterator for bar magnifier mode.
                                When provided with use_bar_magnifier=true, order fills are checked
                                against each sub-bar for more accurate backtesting.
@@ -1336,6 +1341,8 @@ class ScriptRunner:
         """
         self._script_path = script_path
         self._security_data = security_data or {}
+        from .event_data import build_event_data
+        self._event_data = build_event_data(event_data)
         self._magnifier_iter = magnifier_iter
         self._magnifier_source_tf = magnifier_source_tf
         self._chart_bar_window = chart_bar_window
@@ -2198,6 +2205,7 @@ class ScriptRunner:
             security_data=_legacy_file_paths,
             chart_syminfo=self.syminfo,
         )
+        request._event_data = self._event_data
 
         # Root keys of this run, discarded in the finally block (declared before
         # the try so the cleanup is safe on any early failure)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, overload, overload as _typing_ov
 from ..types.footprint import Footprint
 from ..types.na import NA
 from . import syminfo
+from ..core.event_data import EventSeries, event_value
 
 if TYPE_CHECKING:
     from ..core.currency import CurrencyRateProvider
@@ -19,6 +20,14 @@ _currency_provider: CurrencyRateProvider | None = None
 _lib: Any = None
 
 T = TypeVar('T')
+
+# The event series the runner was given (``ScriptRunner(event_data=...)``), keyed
+# ``"KIND"`` or ``"EXCHANGE:SYMBOL:KIND"`` (kind: earnings, dividends, splits). ``None``
+# when nothing was supplied: the three requests then behave as they always did.
+_event_data: 'dict[str, EventSeries] | None' = None
+
+# Field name each request reads when the caller names none (Pine's defaults)
+_EVENT_DEFAULT_FIELD = {'earnings': 'actual', 'dividends': 'gross', 'splits': None}
 
 
 # IDE-facing stub: the SecurityTransformer rewrites every call, so the parameters only
@@ -164,6 +173,39 @@ def currency_rate(from_currency: str, to_currency: str,
     return _currency_provider.get_rate(_from, _to, timestamp)
 
 
+def _event_lookup(kind: str, ticker, field, gaps, lookahead) -> 'float | None':
+    """
+    The value of a supplied event series at the current bar, or ``None`` when no series was
+    supplied for this ticker (the caller then keeps its unfed behavior).
+
+    :param kind: ``earnings``, ``dividends`` or ``splits``
+    :param ticker: The requested ``EXCHANGE:SYMBOL`` (empty: the chart's own)
+    :param field: ``earnings.actual`` etc.; ``None`` is the request's Pine default
+    :param gaps: ``barmerge.gaps_on`` / ``gaps_off``
+    :param lookahead: ``barmerge.lookahead_on`` / ``lookahead_off``
+    :return: The value (``nan`` before the first event), or ``None`` when unfed
+    """
+    data = _event_data
+    if not data:
+        return None
+    from . import barmerge
+    symbol = str(ticker) if ticker else str(syminfo.tickerid)
+    series = data.get(f"{symbol}:{kind}")
+    if series is None and symbol == str(syminfo.tickerid):
+        series = data.get(kind)
+    if series is None:
+        return None
+    name = str(field) if field is not None else _EVENT_DEFAULT_FIELD[kind]
+    global _lib
+    if (lib := _lib) is None:
+        from .. import lib
+        _lib = lib
+    # noinspection PyProtectedMember
+    return event_value(series, name, lib._datetime, int(lib.bar_index), int(lib._time),
+                       bool(lib.session.islastbar()), gaps is barmerge.gaps_on,
+                       lookahead is barmerge.lookahead_on, str(syminfo.timezone))
+
+
 # Pine signature parity: the data source is not implemented, so most parameters go unread
 # noinspection PyUnusedParameter
 def dividends(
@@ -173,6 +215,10 @@ def dividends(
     """
     Request dividend data for a symbol.
 
+    Reads the event series the runner was given (``ScriptRunner(event_data=...)``, see
+    :mod:`pynecore.core.event_data` for the merge rules); without one, behavior is unchanged.
+
+
     :param ticker: Symbol ticker
     :param field: Dividend field (dividends.gross, dividends.net)
     :param gaps: Gap handling mode (barmerge.gaps_on/off)
@@ -181,6 +227,9 @@ def dividends(
     :param currency: Currency the returned values are converted to
     :return: Dividend value or na
     """
+    supplied = _event_lookup('dividends', ticker, field, gaps, lookahead)
+    if supplied is not None:
+        return supplied
     if ignore_invalid_symbol or (
             syminfo.type == 'crypto' and syminfo.tickerid and ticker == syminfo.tickerid
     ):
@@ -197,6 +246,10 @@ def splits(
     """
     Request stock split data for a symbol.
 
+    Reads the event series the runner was given (``ScriptRunner(event_data=...)``, see
+    :mod:`pynecore.core.event_data` for the merge rules); without one, behavior is unchanged.
+
+
     :param ticker: Symbol ticker
     :param field: Split field (splits.numerator, splits.denominator)
     :param gaps: Gap handling mode (barmerge.gaps_on/off)
@@ -204,6 +257,9 @@ def splits(
     :param ignore_invalid_symbol: If True, return na instead of raising
     :return: Split value or na
     """
+    supplied = _event_lookup('splits', ticker, field, gaps, lookahead)
+    if supplied is not None:
+        return supplied
     if ignore_invalid_symbol or (
             syminfo.type == 'crypto' and syminfo.tickerid and ticker == syminfo.tickerid
     ):
@@ -220,6 +276,10 @@ def earnings(
     """
     Request earnings data for a symbol.
 
+    Reads the event series the runner was given (``ScriptRunner(event_data=...)``, see
+    :mod:`pynecore.core.event_data` for the merge rules); without one, behavior is unchanged.
+
+
     :param ticker: Symbol ticker
     :param field: Earnings field (earnings.actual, earnings.estimate, earnings.standardized)
     :param gaps: Gap handling mode (barmerge.gaps_on/off)
@@ -228,6 +288,9 @@ def earnings(
     :param currency: Currency the returned values are converted to
     :return: Earnings value or na
     """
+    supplied = _event_lookup('earnings', ticker, field, gaps, lookahead)
+    if supplied is not None:
+        return supplied
     if ignore_invalid_symbol or (
             syminfo.type == 'crypto' and syminfo.tickerid and ticker == syminfo.tickerid
     ):
