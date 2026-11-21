@@ -78,7 +78,7 @@ Negative controls in CI (`gates-negative` job): the gate1 control above, and the
 
 ## Releases and the service pin
 
-The release tag is `6.10.10-qg.8`, the package version `6.10.10+qg.8` (PEP 440;
+The release tag is `6.10.10-qg.9`, the package version `6.10.10+qg.9` (PEP 440;
 spec §4.9). Never a GitHub Release (it triggers upstream's PyPI workflow); the
 tag push and the rebase force-push are operator steps — `UPGRADING.md` is the
 procedure, step by step.
@@ -87,10 +87,10 @@ The service pins the tag exactly (Task 6):
 
 ```toml
 [project]
-dependencies = ["pynesys-pynecore==6.10.10+qg.8"]
+dependencies = ["pynesys-pynecore==6.10.10+qg.9"]
 
 [tool.uv.sources]
-pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.8" }
+pynesys-pynecore = { git = "https://github.com/QuantGeeks/pynecore", tag = "6.10.10-qg.9" }
 ```
 
 `uv lock` records the tag's commit sha; the image needs a C compiler (Cython
