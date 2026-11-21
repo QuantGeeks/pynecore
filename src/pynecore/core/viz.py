@@ -490,7 +490,15 @@ def drawings_snapshot() -> dict:
 def journal_diff(shadow: dict, bar_index: int) -> list[dict]:
     """Diff the live drawings against ``shadow`` and update it in place.
 
-    :param shadow: ``{(family, vid): state}`` from the previous bar; mutated here
+    Every event carries the drawing's call-site ``tag`` (the tag never changes
+    after creation, so an update's is the creator's and a delete reads it from
+    the shadow). An ``update`` carries ``f``, only the fields that changed and
+    their new values — replaying the journal from an empty set (create sets
+    ``s``, update applies ``f``, delete drops the id) reproduces the full
+    drawing set at every point the journal was drained.
+
+    :param shadow: ``{(family, vid): state}`` from the previous emission;
+        mutated here
     :param bar_index: The current bar index, recorded on every event
     :return: A list of ``create`` / ``update`` / ``delete`` event records
     """
@@ -500,14 +508,17 @@ def journal_diff(shadow: dict, bar_index: int) -> list[dict]:
         old = shadow.get(key)
         if old is None:
             events.append({"t": "ev", "i": bar_index, "op": "create",
-                           "obj": key[0], "id": key[1], "s": state})
+                           "obj": key[0], "id": key[1], "tag": state["tag"],
+                           "s": state})
         elif old != state:
+            fields = {k: v for k, v in state.items() if old.get(k) != v}
             events.append({"t": "ev", "i": bar_index, "op": "update",
-                           "obj": key[0], "id": key[1], "s": state})
-    for key in shadow:
+                           "obj": key[0], "id": key[1], "tag": state["tag"],
+                           "f": fields})
+    for key, old in shadow.items():
         if key not in current:
             events.append({"t": "ev", "i": bar_index, "op": "delete",
-                           "obj": key[0], "id": key[1]})
+                           "obj": key[0], "id": key[1], "tag": old["tag"]})
     shadow.clear()
     shadow.update(current)
     return events

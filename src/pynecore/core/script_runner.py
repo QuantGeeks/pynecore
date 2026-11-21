@@ -1823,12 +1823,23 @@ class ScriptRunner:
             return
         if self.viz_writer is not None:
             self.viz_writer.write_bar(self.bar_index, lib._time, lib._plot_data, lib._viz_dyn)
-        if self._viz_shadow is not None:
-            events = viz.journal_diff(self._viz_shadow, self.bar_index)
-            if self.viz_writer is not None:
-                self.viz_writer.write_events(events)
-            if self.viz_events is not None:
-                self.viz_events(events)
+        self._drain_viz_journal()
+
+    def _drain_viz_journal(self) -> None:
+        """Diff the live drawings into journal events and hand them out.
+
+        Called at bar close (with the bar's plot data, from ``_write_viz_bar``)
+        and after every executed intra-bar tick, so the journal reproduces the
+        drawing set at every point of a live run — each tick's discarded-run
+        rollback included, as the diff from the last emission.
+        """
+        if self._viz_shadow is None:
+            return
+        events = viz.journal_diff(self._viz_shadow, self.bar_index)
+        if self.viz_writer is not None:
+            self.viz_writer.write_events(events)
+        if self.viz_events is not None:
+            self.viz_events(events)
 
     def _process_orders_magnified(self, position, sub_bars, candle) -> None:
         """Backtest sub-bar order processing; in broker mode, the exchange
@@ -3828,6 +3839,7 @@ class ScriptRunner:
                                 cast('BrokerPosition', position).update_unrealized_pnl(float(lib.close))
                             _run_libs_and_main()
                             bar_executed = True
+                            self._drain_viz_journal()
                             if yield_intrabar:
                                 yield from _intrabar_result(candle)
                         last_bar_timestamp = candle.timestamp
@@ -3847,6 +3859,7 @@ class ScriptRunner:
                                 cast('BrokerPosition', position).update_unrealized_pnl(float(lib.close))
                             _run_libs_and_main()
                             bar_executed = True
+                            self._drain_viz_journal()
                             if yield_intrabar:
                                 yield from _intrabar_result(candle)
 
