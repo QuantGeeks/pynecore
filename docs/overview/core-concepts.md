@@ -114,11 +114,11 @@ close_5_bars_ago = close[5]
 ```
 
 Behind the scenes, PyneCore implements Series variables as dynamic circular buffers (`SeriesImpl` class) that efficiently manage historical values:
-1. Each Series has a configurable `max_bars_back` parameter (default: 500) that determines how many historical values are stored.
+1. Each Series has a configurable `max_bars_back` limit that determines how many historical values are stored. The limit comes from the first of: the series' own value (a `max_bars_back(var, num)` call), the script's `indicator(..., max_bars_back=N)` / `strategy(..., max_bars_back=N)` declaration (which sizes every series), the host's engine default (`new_runner_state(max_bars_back_default=D)`, bounding series memory for runners whose scripts index shallowly), and the measured TradingView default of 5000.
 2. The Series includes two key operations:
    - `add()`: Adds a new value for the current bar
    - `set()`: Updates the value for the current bar
-3. Accessing values with array syntax (`series[n]`) retrieves the value from n bars ago.
+3. Accessing values with array syntax (`series[n]`) retrieves the value from n bars ago. An offset beyond the buffer's limit raises TradingView's runtime error (`The requested historical offset (X) is beyond the historical buffer's limit (Y)`), exactly like TradingView — never a silently wrong value; an offset within the limit but before available history is `na`.
 4. Series support slicing (`series[1:5]`) to access ranges of historical values.
 
 The AST transformers automatically convert normal variable assignments to the appropriate Series operations. So you never need to worry about it, it works like in Pine Script. Series variables acts like normal values, just you can index them to get the value from the past.

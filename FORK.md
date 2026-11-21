@@ -49,6 +49,9 @@ system work.)
 | feat(request): earnings, dividends and splits read the event series the runner is given | indicator port gap A | not filed (sev, 2026-10-31); write-up qg/upstream/event-requests.md | carried |
 | fix(input): input.int and drawing coordinates are Python ints | indicator port gap D | not filed (sev, 2026-10-31); write-up qg/upstream/int-input.md | carried |
 | feat(core): engine gaps from an indicator port (pivot levels, HTF feed, event series, int inputs); release 6.10.10-qg.8 | the four rows above, as one squash | not filed (sev, 2026-10-31); write-ups as above | carried |
+| feat(drawing): engine call-site tags on every drawing object | per-viewer restyle without style inputs in the computation key | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-tags.md | carried |
+| feat(viz): exact drawing change journal with call-site tags | the host renders drawings per update: applying the journal from an empty set reproduces the drawing set at every point | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-journal.md | carried |
+| feat(core): honor max_bars_back from the declaration, the function and an engine default | series memory bounded by what scripts index; RE10143 parity | not filed (sev, 2026-10-31); write-up qg/upstream/max-bars-back.md | carried |
 
 ## Engine findings without a patch
 

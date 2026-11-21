@@ -157,7 +157,9 @@ na are encoded as `null`.
 | `op`  | str    | `"create"` / `"update"` / `"delete"`                             |
 | `obj` | str    | `line`/`label`/`box`/`table`/`polyline`/`linefill`               |
 | `id`  | int    | The drawing's `vid` (see [Drawing vids](#drawing-vids))          |
-| `s`   | object | The full serialized drawing state (omitted for `delete`)         |
+| `tag` | int    | The creating call site's tag (see [Drawing tags](#drawing-tags)); a `delete` reads it from the shadow |
+| `s`   | object | The full serialized drawing state (`create` only)                 |
+| `f`   | object | `{field: new_value}` — only the fields that changed (`update` only) |
 
 ### `drawings` — end-of-run snapshot
 
@@ -259,13 +261,35 @@ produce a clone with a **fresh** vid. Both the `drawings` snapshot and the journ
 objects by vid, and a `linefill` embeds the current state of its two lines under `line1_state` /
 `line2_state`.
 
+## Drawing tags
+
+Every drawing — and every table cell — carries a `tag`: a stable integer identifying the **script
+call site that created it** (the `line.new`, `label.new`, `box.new`, `polyline.new`, `linefill.new`,
+`table.new`, `table.cell` / `table.cell_set_*` call; a `.copy()` stamps the copy site's tag, and a
+cell keeps its creator's tag on later writes). Tags are assigned once per script version by a
+lowering pass, in source order, so the same script version produces the **same tags on every run**.
+A host can therefore restyle drawings per viewer keyed by tag, without color or style inputs in the
+computation key — and tags never change a computed value.
+
+Read tags from the `drawings` snapshot (each serialized object and cell carries a `tag` field) or
+from the journal (`ev.tag` on every create/update/delete).
+
 ## Journal Mode
 
-With `viz_journal=True`, the runtime diffs the live drawing registries against the previous bar and
-emits an `ev` record for every object that was created, changed, or deleted. A drawing that is
-created once and mutated each bar (e.g. a trend line whose endpoint is moved with `line.set_xy2`)
-produces exactly one `create`, one `update` per changed bar, and one `delete`. Without journaling the
-stream carries only the final `drawings` snapshot.
+With `viz_journal=True`, the runtime diffs the live drawing registries against the previous
+emission and emits an `ev` record for every object that was created, changed, or deleted. A drawing
+that is created once and mutated each bar (e.g. a trend line whose endpoint is moved with
+`line.set_xy2`) produces exactly one `create`, one `update` per changed bar, and one `delete`. An
+`update` carries `f`, only the fields that changed and their new values — not the full state.
+Without journaling the stream carries only the final `drawings` snapshot.
+
+The journal is **exact**: replaying it from an empty set (a `create` sets `s`, an `update` applies
+`f`, a `delete` drops the id) reproduces the full drawing set at every point it was drained —
+including a cap eviction (the oldest object's `delete`) in the same bar as a new `create`.
+
+In live mode the journal also drains after every executed intra-bar tick, not only at bar close: a
+forming bar's discarded run (its rollback) and its re-run are closed loops in the journal, so a
+draining host sees each tick's drawing state.
 
 ## Programmatic Accessors
 
@@ -275,7 +299,7 @@ After (or during) a run, the runner exposes the same state the writer serializes
 |-----------------------|--------------|--------------------------------------------------------------------------|
 | `runner.plot_meta`    | property     | `{id: PlotMeta}` — the registered plot-family metadata                   |
 | `runner.drawings()`   | method       | A full drawings snapshot (same shape as the `drawings` NDJSON record)    |
-| `runner.viz_events`   | attribute    | Optional `Callable[[list[dict]], None]`; receives each bar's journal events |
+| `runner.viz_events`   | attribute    | Optional `Callable[[list[dict]], None]`; receives each bar's journal events (and, in live mode, each executed tick's) |
 
 Plot-family and drawing state is reset only at **run start**, so `plot_meta` / `drawings()` remain
 valid after the iterator is exhausted:
