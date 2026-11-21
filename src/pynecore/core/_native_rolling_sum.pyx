@@ -138,12 +138,12 @@ cdef class SumMachine:
         self.compensation = 0.0
         self.seen = 0
         self.window = 0
-        self.capacity = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+        self.capacity = _SeriesImpl.default_max_bars_back()
         self.ring = _zeros(0)
         self.ring_cap = 0
         self.slot = 0
         self.values = _zeros(0)
-        self.values_cap = _SeriesImpl.DEFAULT_MAX_BARS_BACK + 1
+        self.values_cap = _SeriesImpl.default_max_bars_back() + 1
         self.values_size = 0
         self.values_pos = 0
         self.values_bar = -1

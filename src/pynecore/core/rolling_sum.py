@@ -188,12 +188,12 @@ class SumMachine:
         self.compensation = 0.0
         self.seen = 0
         self.window = 0
-        self.capacity = SeriesImpl.DEFAULT_MAX_BARS_BACK
+        self.capacity = SeriesImpl.default_max_bars_back()
         self.ring: list[float] = []
         self.ring_cap = 0
         self.slot = 0
         self.values: list[float] = []
-        self.values_cap = SeriesImpl.DEFAULT_MAX_BARS_BACK + 1
+        self.values_cap = SeriesImpl.default_max_bars_back() + 1
         self.values_size = 0
         self.values_pos = 0
         self.values_bar: Any = -1

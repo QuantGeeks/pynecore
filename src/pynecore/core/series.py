@@ -39,12 +39,49 @@ class SeriesImpl(Generic[T]):
 
     _lib: ModuleType = None  # Placeholder for the lib module
 
+    @classmethod
+    def default_max_bars_back(cls, explicit: int | None = None) -> int:
+        """The buffer limit a new series starts with.
+
+        Resolution order: the series' own explicit value (a per-variable
+        declaration), the script's ``indicator`` / ``strategy`` declaration
+        (``max_bars_back=`` sizes every series), the host's engine default
+        (``new_runner_state(max_bars_back_default=...)``, bounding series
+        memory for hosts whose scripts index shallowly), and finally the
+        measured TradingView default above.
+
+        :param explicit: The series' explicitly declared limit, if any
+        :raises ValueError: If the script declaration exceeds the maximum
+        """
+        if explicit:
+            return explicit
+        lib = cls._lib
+        if lib is None:
+            from .. import lib
+            cls._lib = lib
+        # getattr, not attribute access: the module-level inline series is
+        # constructed while ``pynecore.lib`` is still initializing (a circular
+        # import through types), when neither attribute exists yet — the class
+        # default is the right answer there anyway.
+        script = getattr(lib, "_script", None)
+        declared = script.max_bars_back if script is not None else 0
+        if declared:
+            if declared > cls.MAXIMUM_MAX_BARS_BACK:
+                raise ValueError(
+                    f"The max_bars_back cannot exceed {cls.MAXIMUM_MAX_BARS_BACK}!")
+            return declared
+        default = getattr(lib, "_max_bars_back_default", 0)
+        if default:
+            return default
+        return cls.DEFAULT_MAX_BARS_BACK
+
     # noinspection PyMissingConstructor
     def __init__(self, max_bars_back: int | None = None, na_value: T | None = None,
                  compacted: bool = False, as_float: bool = False):
         """
         :param max_bars_back: Optional initial capacity for historical lookback.
-                              If not provided, DEFAULT_MAX_BARS_BACK is used.
+                              If not provided, :meth:`default_max_bars_back`
+                              resolves the script declaration / engine default.
                               The actual buffer capacity will be (max_bars_back + 1).
         :param na_value: The na sentinel returned for out-of-range reads.
                          Numeric (float and int) series pass the native nan
@@ -72,7 +109,7 @@ class SeriesImpl(Generic[T]):
         self._compacted = compacted
         self._as_float = as_float
 
-        self._max_bars_back = max_bars_back or self.DEFAULT_MAX_BARS_BACK
+        self._max_bars_back = self.default_max_bars_back(max_bars_back)
         self._max_bars_back_set = max_bars_back or 0
         # Internal capacity is max_bars_back + 1 (for current candle + historical bars)
         self._capacity = self._max_bars_back + 1
@@ -353,7 +390,10 @@ class SeriesImpl(Generic[T]):
 
         Pine semantics: subscripting with `na` returns the current bar's value
         (offset 0) — TradingView's history-referencing operator treats an `na`
-        offset as 0. An out-of-range offset (negative = forward of the current
+        offset as 0. An offset beyond the buffer's limit raises TradingView's
+        runtime error (RE10143) instead of silently returning a wrong value: a
+        read that deep can never be served, whatever the bar count. An
+        out-of-range offset within the limit (negative = forward of the current
         bar, positive >= size = before available history) returns `na` rather
         than raising. A fractional offset is truncated: the subscript is a
         consumer slot of a Pine int, which is a double at runtime.
@@ -361,6 +401,7 @@ class SeriesImpl(Generic[T]):
         :param key: Number offset, NA, or slice
         :return: Single value for a number offset, ReadOnlySeriesView for slice
         :raises TypeError: If key is not a number, NA, or slice
+        :raises RuntimeError: If the offset is beyond the buffer's limit
         """
         # One conversion is the whole hot loop: a Pine int offset is a float as
         # often as a Python int (loop counters, bar_index arithmetic), and
@@ -377,6 +418,12 @@ class SeriesImpl(Generic[T]):
                 offset = 0
             else:
                 raise TypeError("Series indices must be numbers or slices")  # noqa
+        # Beyond the buffer's limit the read can never be served, whatever the
+        # bar count: TradingView's runtime error (RE10143), not a silent na.
+        if offset > self._max_bars_back:
+            raise RuntimeError(
+                f"The requested historical offset ({offset}) is beyond the "
+                f"historical buffer's limit ({self._max_bars_back})")
         # Pine: out-of-range subscript -> na (covers both negative and
         # positive past-end indices).
         if offset < 0 or offset >= self._size:

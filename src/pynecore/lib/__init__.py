@@ -161,6 +161,13 @@ _datetime: datetime = datetime.fromtimestamp(0, UTC)
 # Script settings from `script.indicator`, `script.strategy` or `script.library`
 _script: script = None  # type: ignore[assignment]
 
+#: Engine-level default for the series history limit, set by the host through
+#: ``new_runner_state(max_bars_back_default=...)`` to bound series memory for
+#: runners whose scripts index shallowly. ``0`` keeps the measured TradingView
+#: default (5000): a script's ``indicator`` / ``strategy`` ``max_bars_back=``
+#: declaration always wins over this, and a series' own value over both.
+_max_bars_back_default: int = 0
+
 # Chart (main-series) timeframe, propagated into request.security children so
 # ``timeframe.main_period`` there reports the chart TF instead of the context's
 # own period. ``None`` on the chart side, where ``_script`` carries it directly.
@@ -218,15 +225,21 @@ if TYPE_CHECKING:
 # Functions
 #
 
-# noinspection PyUnusedLocal,unused-parameter
 def max_bars_back(var: Any, num: int) -> None:
     """
     Function sets the maximum number of bars that is available for historical reference of a given
     built-in or user variable.
 
+    In lowered script code the statement form is rewritten to the state slot
+    directly (``__state__[N].max_bars_back = num``); this runtime form serves
+    the calls the transformer cannot rewrite (a non-slot value, host-side use)
+    and resizes the series the value carries.
+
     :param var: Series variable identifier for which history buffer should be resized.
     :param num: History buffer size which is the number of bars to keep.
     """
+    if isinstance(var, _SeriesImpl):
+        var.max_bars_back = int(num)
 
 
 ### Date / Time ###

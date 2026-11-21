@@ -274,9 +274,9 @@ def change(source: Series[TFIB], length: int = 1) -> TFIB:
     # operators, not by this function.
     assert length > 0, "Invalid length, length must be greater than 0!"
     length = int(length)
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
     # Grow the buffer so ``source[length]`` stays addressable for lengths beyond the
-    # per-series default max_bars_back (500); otherwise it reads na and the change is na.
+    # per-series default max_bars_back; otherwise the read is past its limit.
     # The resize is monotonic: a series ``length`` that dips low must not shrink the
     # buffer, or the history a later increase needs would already be gone.
     if length > capacity:
@@ -338,7 +338,7 @@ def cog(source: Series[float], length: int) -> PyneFloat:
     summ: Persistent[float] = 0.0
     weighted_summ: Persistent[float] = 0.0
     val: Persistent[float] = na_float
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     if not (source == source):  # is_na_arg
         # An NA bar leaves the window unchanged; hold the last full value
@@ -541,7 +541,7 @@ def dev(source: Series[float], length: int, _mean: PyneFloat | None = None) -> P
     if length == 1:
         return 0.0
     length = int(length)
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
     # The loop below reads ``source[length - 1]``; grow the buffer so that index
     # stays addressable for lengths beyond the per-series default max_bars_back. The
     # resize is monotonic: a series ``length`` that dips low must not shrink the
@@ -1434,7 +1434,7 @@ def median(source: Series[TFI], length: int) -> TFI:
     heap_high: Persistent[list[TFI]] = []  # Min heap
     window: Persistent[list[TFI]] = []  # Recent values for removal
     prev_length: Persistent[int] = 0
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     source_na = not (source == source)  # is_na_arg
     if not source_na:
@@ -1613,7 +1613,7 @@ def mode(source: Series[TFI], length: int) -> TFI:
     :return: The most frequently occurring value from the source. If none exists, returns
              the smallest value instead. Returns na during warm-up period.
     """
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     source_na = not (source == source)  # is_na_arg
     if not source_na:
@@ -1888,7 +1888,7 @@ def percentile_linear_interpolation(source: Series[float], length: int, percenta
     # exact order misses TradingView on up to 44% of the bars.
     window: Persistent[deque[float]] = deque()
     ranks: Persistent[list[float]] = []
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     # The percentile machines are the only rolling ``ta`` functions that accept an
     # na length: TradingView returns na for the whole series instead of raising
@@ -2005,7 +2005,7 @@ def percentile_nearest_rank(source: Series[float], length: int, percentage: int 
     # blocks with a one-bar gap between them — observed, not an artifact).
     window: Persistent[deque[float]] = deque()
     ranks: Persistent[list[float]] = []
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     # na length is an all-na series here, not an error; see
     # ``percentile_linear_interpolation`` for the measured family law. The
@@ -2080,7 +2080,7 @@ def percentrank(source: Series[float], length: int) -> PyneFloat:
     """
     assert length > 0, "Invalid length, length must be greater than 0!"
     length = int(length)
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
     # The final slice reads ``length + 1`` candles of history; a buffer of
     # ``max_bars_back == length`` (capacity ``length + 1``) holds exactly that.
     # Done before the warmup guard so the oldest candles are kept from bar 0. The
@@ -2459,7 +2459,7 @@ def rci(source: Series[float], length: int) -> PyneFloat:
     """
     assert length > 0, "Invalid length, length must be greater than 0!"
     length = int(length)
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
     # The slice below reads ``length`` candles of history; grow the source
     # buffer to fit it (the per-series default may be smaller). Done before the
     # warmup guard so the oldest candles are kept from the first bar on. The resize
@@ -2601,9 +2601,9 @@ def roc(source: Series[float], length: int) -> PyneFloat:
     if not (source == source):  # is_na_arg
         return na_float
     length = int(length)
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
     # Grow the buffer so ``source[length]`` stays addressable for lengths beyond the
-    # per-series default max_bars_back (500); otherwise it reads na and the roc is na.
+    # per-series default max_bars_back; otherwise the read is past its limit.
     # The resize is monotonic: a series ``length`` that dips low must not shrink the
     # buffer, or the history a later increase needs would already be gone.
     if length > capacity:
@@ -3210,7 +3210,7 @@ def wma(source: Series[float], length: int) -> PyneFloat:
     last: Persistent[float] = na_float
     const_len: Persistent[int] = 0
     norm: Persistent[float] = 0.0
-    capacity: Persistent[int] = _SeriesImpl.DEFAULT_MAX_BARS_BACK
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
 
     source_na = not (source == source)  # is_na_arg
     if not source_na:

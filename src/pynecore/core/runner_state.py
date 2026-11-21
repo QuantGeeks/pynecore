@@ -188,15 +188,31 @@ def active_state() -> RunnerState | None:
     return _current
 
 
-def new_runner_state(*, sum_mode: str = "compensated") -> RunnerState:
+def new_runner_state(*, sum_mode: str = "compensated",
+                     max_bars_back_default: int = 0) -> RunnerState:
     """A fresh state: baseline values, empty caches, no script, its own sum mode.
 
     :param sum_mode: One of ``rolling_sum.SUM_MODES`` (spec 9.2 E1).
-    :raises ValueError: On any other mode (Task 2's message).
+    :param max_bars_back_default: Engine-level series history limit for every
+        series this state's runners create (0 keeps TradingView's measured
+        5000 default). Bounds the memory of a runner whose scripts index
+        shallowly; a script's ``indicator`` / ``strategy`` ``max_bars_back=``
+        declaration or a ``max_bars_back(var, num)`` call still sizes its own
+        series, and a read past the limit raises TradingView's runtime error
+        rather than returning a wrong value.
+    :raises ValueError: On any other mode (Task 2's message), or on a history
+        limit outside ``0 .. SeriesImpl.MAXIMUM_MAX_BARS_BACK``.
     """
     if sum_mode not in rolling_sum.SUM_MODES:
         raise ValueError(f"sum mode must be one of {rolling_sum.SUM_MODES}, got {sum_mode!r}")
-    return RunnerState(sum_mode)
+    if not 0 <= max_bars_back_default <= instance_state.SeriesImpl.MAXIMUM_MAX_BARS_BACK:
+        raise ValueError("max_bars_back_default must be between 0 "
+                         f"(engine default) and {instance_state.SeriesImpl.MAXIMUM_MAX_BARS_BACK}")
+    state = RunnerState(sum_mode)
+    if max_bars_back_default:
+        from pynecore import lib
+        state.vals[(lib, "_max_bars_back_default")] = max_bars_back_default
+    return state
 
 
 def create_runner(state: RunnerState, **script_runner_kwargs: Any) -> ScriptRunner:
