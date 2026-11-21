@@ -148,6 +148,7 @@ def new(*args: Any, **kwargs: Any) -> Box:
         text_font_family=text_font_family,
         text_formatting=text_formatting,
         force_overlay=force_overlay,
+        tag=kwargs.get('tag', -1),
     )
     box.vid = next_vid()
     _registry[box] = None
@@ -175,13 +176,14 @@ def delete(id):
 
 
 # noinspection PyShadowingBuiltins,PyProtectedMember
-def copy(id):
+def copy(id, tag: int = -1):
     if lib._in_lib_main:
         return NA(Box)
 
     if isinstance(id, NA):
         return NA(Box)
     clone = _copy(id)
+    clone.tag = tag
     clone.vid = next_vid()
     _registry[clone] = None
     if len(_registry) > (lib._script.max_boxes_count if lib._script is not None else 500):

@@ -189,6 +189,7 @@ A row named `Expression/<Rule>` is a rule of the fused phase `Expression`; the `
 | `VerifyClosedShift`         | Clear `closed_shift` where the lowered write is no history read | no             | Directly after Series, whose emission it recognizes                      |
 | `Persistent`                | Turn Persistent variables into slots of the state vector        | no             | -                                                                        |
 | `CallInline`                | Copy the body of trivial stateless builtins into the call site  | no             | Before FunctionIsolation: an inlined site is no call and gets no anchor  |
+| `DrawingTags`               | Stamp drawing-creation call sites with the engine's tag          | yes            | After CallInline numbered its copies, before FunctionIsolation replaces the callees |
 | `FunctionIsolation`         | Give every call site its own callee state (child slots)         | no             | After Persistent and Series (classification needs their slots)           |
 | `ScriptRequirements`        | Detect the broker capabilities a strategy needs                 | no             | -                                                                        |
 | `Input`                     | Add `_id` to input calls, rebind source inputs                  | no             | Before the Expression phase (SafeConvert must see the rebinding)         |
@@ -885,6 +886,10 @@ Key aspects:
 - Module level, class bodies, decorators, defaults, lambdas and comprehensions are skipped (the temporaries would bind in the wrong scope), as are keyword arguments, starred arguments and an unsupported arity. Leaving the call in place is always correct.
 - Every comparison the pass emits **for itself** is marked exact, so the Float Tolerance rewrite leaves the copied raw `x == x` na tests alone — but never a comparison inside an argument, which is the user's own Pine code and still gets the tolerant rewrite.
 - The inlined wrapper sources and `core/inline_support.py` take part in the pipeline digest, so editing a wrapper body or an anchor invalidates cached script bytecode.
+
+### DrawingTags
+
+Injects `tag=<n>` into every call that creates a drawing: the `lib.<family>.<method>(...)` creation calls of all six families (including `table.cell` and the `cell_set_*` setters, whose first touch of a cell creates it) and the builtin-method dispatch `method_call('<method>', obj, ...)` for method names that only drawing namespaces define. The numbers count the creation sites of a module in traversal order, so a tag identifies a call site and is stable across runs of the same script version. It runs after `CallInline` (whose inlined copies are numbered like the sites they became) and before `FunctionIsolation`, whose anchored call sites replace the callee expression: the tag stays on the call and rides along. User code only: pynecore's own lib modules implement the creation functions, they don't call them.
 
 ### FunctionIsolation
 

@@ -296,6 +296,7 @@ def collect_meta_changes(cursor: int = 0) -> tuple[int, list[dict[str, Any]]]:
 def _line_dict(l: Any) -> dict:
     return {
         "id": l.vid,
+        "tag": _int_field(l.tag),
         "x1": _int_field(l.x1), "y1": _float_field(l.y1),
         "x2": _int_field(l.x2), "y2": _float_field(l.y2),
         "xloc": enum_name(l.xloc, XLOC),
@@ -310,6 +311,7 @@ def _line_dict(l: Any) -> dict:
 def _label_dict(la: Any) -> dict:
     return {
         "id": la.vid,
+        "tag": _int_field(la.tag),
         "x": _int_field(la.x), "y": _float_field(la.y),
         "text": la.text,
         "xloc": enum_name(la.xloc, XLOC),
@@ -329,6 +331,7 @@ def _label_dict(la: Any) -> dict:
 def _box_dict(b: Any) -> dict:
     return {
         "id": b.vid,
+        "tag": _int_field(b.tag),
         "left": _int_field(b.left), "top": _float_field(b.top),
         "right": _int_field(b.right), "bottom": _float_field(b.bottom),
         "border_color": color_str(b.border_color),
@@ -352,6 +355,7 @@ def _box_dict(b: Any) -> dict:
 def _cell_dict(col: int, row: int, cell: Any) -> dict:
     d = {
         "col": _int_field(col), "row": _int_field(row),
+        "tag": _int_field(cell.tag),
         "text": cell.text,
         "width": _float_field(cell.width),
         "height": _float_field(cell.height),
@@ -375,6 +379,7 @@ def _cell_dict(col: int, row: int, cell: Any) -> dict:
 def _table_dict(t: Any) -> dict:
     return {
         "id": t.vid,
+        "tag": _int_field(t.tag),
         "position": enum_name(t.position, POSITION),
         "columns": _int_field(t.columns),
         "rows": _int_field(t.rows),
@@ -395,6 +400,7 @@ def _point_dict(p: Any) -> dict:
 def _polyline_dict(p: Any) -> dict:
     return {
         "id": p.vid,
+        "tag": _int_field(p.tag),
         "points": [_point_dict(pt) for pt in p.points],
         "curved": p.curved,
         "closed": p.closed,
@@ -410,6 +416,7 @@ def _polyline_dict(p: Any) -> dict:
 def _linefill_dict(lf: Any) -> dict:
     return {
         "id": lf.vid,
+        "tag": _int_field(lf.tag),
         "line1": lf.line1.vid,
         "line2": lf.line2.vid,
         "color": color_str(lf.color),

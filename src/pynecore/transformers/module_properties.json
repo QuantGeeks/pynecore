@@ -3335,6 +3335,9 @@
     "Table": {
       "type": "variable"
     },
+    "TableCell": {
+      "type": "variable"
+    },
     "all": {
       "type": "property"
     },

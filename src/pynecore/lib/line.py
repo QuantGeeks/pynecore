@@ -123,7 +123,8 @@ def new(*args: Any, **kwargs: Any) -> Line:
         color=color,
         style=style or style_solid,
         width=width,
-        force_overlay=force_overlay
+        force_overlay=force_overlay,
+        tag=kwargs.get('tag', -1)
     )
     line_obj.vid = next_vid()
     _registry[line_obj] = None
@@ -152,7 +153,7 @@ def delete(id):
 
 
 # noinspection PyShadowingBuiltins,PyProtectedMember
-def copy(id):
+def copy(id, tag: int = -1):
     """Copy line object"""
     if lib._in_lib_main:
         return NA(Line)
@@ -160,6 +161,7 @@ def copy(id):
     if isinstance(id, NA):
         return NA(Line)
     clone = _copy(id)
+    clone.tag = tag
     clone.vid = next_vid()
     _registry[clone] = None
     if len(_registry) > (lib._script.max_lines_count if lib._script is not None else 500):

@@ -2,7 +2,7 @@ from .. import lib
 from ..core.module_property import module_property
 from ..core.safe_convert import native_int_or as _native_int_or
 from ..types.base import next_vid
-from ..types.table import Table
+from ..types.table import Table, TableCell
 from ..types.na import NA
 from ..lib import (color as _color, position as _position, size as _size, text as _text, font as _font)
 
@@ -23,6 +23,28 @@ def _coord(value: int) -> int:
     :return: The truncated native integer, 0 when there is none
     """
     return _native_int_or(value, 0)
+
+
+def _tagged_cell(table_id: Table, column: int, row: int, tag: int) -> TableCell:
+    """
+    Get the cell at (column, row) for a creating call site.
+
+    The cell a call site creates carries that site's tag; a cell that already
+    exists keeps its creator's tag, so a later write through another call site
+    never re-stamps it.
+
+    :param table_id: A table object
+    :param column: The index of the cell's column
+    :param row: The index of the cell's row
+    :param tag: The tag of the call site reaching for the cell
+    :return: The cell at (column, row), created on first touch
+    """
+    coord = (_coord(column), _coord(row))
+    created = coord not in table_id.cells
+    cell_obj = table_id.get_cell(*coord)
+    if created:
+        cell_obj.tag = tag
+    return cell_obj
 
 
 def _evict_position(position: _position.Position, keep: Table | None = None) -> None:
@@ -47,7 +69,8 @@ def _evict_position(position: _position.Position, keep: Table | None = None) -> 
 
 def new(position: _position.Position, columns: int, rows: int, bgcolor: _color.Color = None,
         frame_color: _color.Color = None, frame_width: int = 0, border_color: _color.Color = None,
-        border_width: int = 0, force_overlay: bool = False) -> Table:
+        border_width: int = 0, force_overlay: bool = False,
+        tag: int = -1) -> Table:
     """
     Creates a new table object.
 
@@ -78,7 +101,8 @@ def new(position: _position.Position, columns: int, rows: int, bgcolor: _color.C
         frame_width=frame_width,
         border_color=border_color,
         border_width=border_width,
-        force_overlay=force_overlay
+        force_overlay=force_overlay,
+        tag=tag
     )
     table.vid = next_vid()
     _evict_position(position)
@@ -117,7 +141,8 @@ def cell(table_id: Table, column: int, row: int, text: str = "", width: int | fl
          text_halign: _text.AlignEnum = _text.align_center, text_valign: _text.AlignEnum = _text.align_center,
          text_size: int | str = _size.normal, bgcolor: _color.Color = None, tooltip: str = "",
          text_font_family: _font.FontFamilyEnum = _font.family_default,
-         text_formatting: _text.FormatEnum = _text.format_none) -> None:
+         text_formatting: _text.FormatEnum = _text.format_none,
+         tag: int = -1) -> None:
     """
     Defines a cell in the table and sets its attributes.
 
@@ -142,8 +167,8 @@ def cell(table_id: Table, column: int, row: int, text: str = "", width: int | fl
     if isinstance(table_id, NA):
         return
 
-    # Create or get the cell
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    # Create or get the cell (stamped with this call site's tag on creation)
+    cell_obj = _tagged_cell(table_id, column, row, tag)
 
     # Set all the cell properties
     cell_obj.text = text
@@ -201,91 +226,100 @@ def merge_cells(table_id: Table, start_column: int, start_row: int, end_column: 
 
 
 # Cell setter functions
-def cell_set_bgcolor(table_id: Table, column: int, row: int, bgcolor: _color.Color) -> None:
+def cell_set_bgcolor(table_id: Table, column: int, row: int, bgcolor: _color.Color,
+                     tag: int = -1) -> None:
     """Sets the background color of the cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.bgcolor = bgcolor
 
 
-def cell_set_height(table_id: Table, column: int, row: int, height: int | float) -> None:
+def cell_set_height(table_id: Table, column: int, row: int, height: int | float,
+                    tag: int = -1) -> None:
     """Sets the height of cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.height = height
 
 
-def cell_set_text(table_id: Table, column: int, row: int, text: str) -> None:
+def cell_set_text(table_id: Table, column: int, row: int, text: str, tag: int = -1) -> None:
     """Sets the text in the specified cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text = text
 
 
-def cell_set_text_color(table_id: Table, column: int, row: int, text_color: _color.Color) -> None:
+def cell_set_text_color(table_id: Table, column: int, row: int, text_color: _color.Color,
+                        tag: int = -1) -> None:
     """Sets the color of the text inside the cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_color = text_color
 
 
-def cell_set_text_font_family(table_id: Table, column: int, row: int, text_font_family: _font.FontFamilyEnum) -> None:
+def cell_set_text_font_family(table_id: Table, column: int, row: int,
+                              text_font_family: _font.FontFamilyEnum, tag: int = -1) -> None:
     """Sets the font family of the text inside the cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_font_family = text_font_family
 
 
-def cell_set_text_formatting(table_id: Table, column: int, row: int, text_formatting: _text.FormatEnum) -> None:
+def cell_set_text_formatting(table_id: Table, column: int, row: int,
+                             text_formatting: _text.FormatEnum, tag: int = -1) -> None:
     """Sets the formatting attributes the drawing applies to displayed text."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_formatting = text_formatting
 
 
-def cell_set_text_halign(table_id: Table, column: int, row: int, text_halign: _text.AlignEnum) -> None:
+def cell_set_text_halign(table_id: Table, column: int, row: int, text_halign: _text.AlignEnum,
+                         tag: int = -1) -> None:
     """Sets the horizontal alignment of the cell's text."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_halign = text_halign
 
 
-def cell_set_text_size(table_id: Table, column: int, row: int, text_size: int | str) -> None:
+def cell_set_text_size(table_id: Table, column: int, row: int, text_size: int | str,
+                       tag: int = -1) -> None:
     """Sets the size of the cell's text."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_size = text_size
 
 
-def cell_set_text_valign(table_id: Table, column: int, row: int, text_valign: _text.AlignEnum) -> None:
+def cell_set_text_valign(table_id: Table, column: int, row: int, text_valign: _text.AlignEnum,
+                         tag: int = -1) -> None:
     """Sets the vertical alignment of a cell's text."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.text_valign = text_valign
 
 
-def cell_set_tooltip(table_id: Table, column: int, row: int, tooltip: str) -> None:
+def cell_set_tooltip(table_id: Table, column: int, row: int, tooltip: str, tag: int = -1) -> None:
     """Sets the tooltip in the specified cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.tooltip = tooltip
 
 
-def cell_set_width(table_id: Table, column: int, row: int, width: int | float) -> None:
+def cell_set_width(table_id: Table, column: int, row: int, width: int | float,
+                   tag: int = -1) -> None:
     """Sets the width of the cell."""
     if isinstance(table_id, NA):
         return
-    cell_obj = table_id.get_cell(_coord(column), _coord(row))
+    cell_obj = _tagged_cell(table_id, column, row, tag)
     cell_obj.width = width
 
 

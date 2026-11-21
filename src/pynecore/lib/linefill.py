@@ -10,7 +10,7 @@ _registry: list[LineFill] = []
 
 
 # noinspection PyShadowingBuiltins
-def new(line1: Line, line2: Line, color: _color.Color) -> LineFill:
+def new(line1: Line, line2: Line, color: _color.Color, tag: int = -1) -> LineFill:
     """
     Creates a new linefill object and displays it on the chart, filling the space between line1 and
     line2 with the color specified in color.
@@ -37,7 +37,8 @@ def new(line1: Line, line2: Line, color: _color.Color) -> LineFill:
     linefill_obj = LineFill(
         line1=line1,
         line2=line2,
-        color=color
+        color=color,
+        tag=tag
     )
     linefill_obj.vid = next_vid()
     _registry.append(linefill_obj)

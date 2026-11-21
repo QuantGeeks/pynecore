@@ -27,6 +27,9 @@ class TableCell:
     merge_end_col: int = -1
     merge_end_row: int = -1
 
+    # Stable id of the script call site that created the cell
+    tag: int = -1
+
 
 @dataclass(slots=True, eq=False)
 class Table(Drawing):
@@ -45,6 +48,9 @@ class Table(Drawing):
 
     # Cell data storage - using (column, row) as key
     cells: Dict[Tuple[int, int], TableCell] = field(default_factory=dict)
+
+    # Stable id of the script call site that created the drawing
+    tag: int = -1
 
     vid: int = -1
 

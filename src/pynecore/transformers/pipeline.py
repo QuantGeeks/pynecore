@@ -30,6 +30,7 @@ from pynecore.transformers.builtin_shadow import BuiltinShadowTransformer
 from pynecore.transformers.call_inline import CallInlineTransformer
 from pynecore.transformers.closure_arguments_transformer import ClosureArgumentsTransformer
 from pynecore.transformers.const_fold import ConstFoldTransformer
+from pynecore.transformers.drawing_tags import DrawingTagsTransformer
 from pynecore.transformers.dynamic_default import DynamicDefaultTransformer
 from pynecore.transformers.export_capture import ExportCaptureTransformer
 from pynecore.transformers.export_once import ExportOnceTransformer
@@ -257,6 +258,11 @@ LOWERING: Sequence[Step | Phase] = (
     # emits are marked ``pine_exact`` so the float tolerance rewrite below leaves
     # the copied raw na tests alone
     Step('CallInline', _visit(CallInlineTransformer)),
+    # The engine's call-site tag on drawing creation. After CallInline, so an
+    # inlined wrapper's copies are numbered like the sites they became, and
+    # before FunctionIsolation, whose anchored call sites replace the callee
+    # expression: the tag keyword stays on the call and rides along
+    Step('DrawingTags', _visit(DrawingTagsTransformer), user_code_only=True),
     # Call-site classification needs the var/series slots, so the isolation step
     # must run after Persistent and Series
     Step('FunctionIsolation', _function_isolation),

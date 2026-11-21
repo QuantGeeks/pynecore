@@ -22,7 +22,8 @@ style_solid = LineEnum()
 def new(points: list[ChartPoint], curved: bool = False, closed: bool = False,
         xloc: _xloc.XLoc = _xloc.bar_index, line_color: _color.Color = _color.blue,
         fill_color: _color.Color | None = None, line_style: LineEnum = style_solid,
-        line_width: int = 1, force_overlay: bool = False) -> Polyline | NA[Polyline]:
+        line_width: int = 1, force_overlay: bool = False,
+        tag: int = -1) -> Polyline | NA[Polyline]:
     """
     Creates a new polyline instance and displays it on the chart, sequentially connecting all of the
     points in the points array with line segments.
@@ -61,7 +62,8 @@ def new(points: list[ChartPoint], curved: bool = False, closed: bool = False,
         fill_color=fill_color,
         line_style=line_style,
         line_width=line_width,
-        force_overlay=force_overlay
+        force_overlay=force_overlay,
+        tag=tag
     )
     polyline_obj.vid = next_vid()
     _registry[polyline_obj] = None
