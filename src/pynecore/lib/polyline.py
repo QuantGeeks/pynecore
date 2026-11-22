@@ -63,8 +63,10 @@ def new(points: list[ChartPoint], curved: bool = False, closed: bool = False,
         line_style=line_style,
         line_width=line_width,
         force_overlay=force_overlay,
-        tag=tag
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    polyline_obj.tag = tag
     polyline_obj.vid = next_vid()
     _registry[polyline_obj] = None
     # Enforce Pine's max_polylines_count cap: drop the oldest polyline (FIFO) past the limit.

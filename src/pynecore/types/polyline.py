@@ -38,7 +38,5 @@ class Polyline(Drawing):
     # If true, the drawing will display on the main chart pane
     force_overlay: bool = False
 
-    # Stable id of the script call site that created the drawing
-    tag: int = -1
 
     vid: int = -1

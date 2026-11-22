@@ -85,3 +85,31 @@ restyle on them pins the version with the script.
 Whether TradingView exposes an equivalent internal id (it restyles per
 viewer, so something like it exists there); nothing public to align with, so
 the tag numbering is ours and stable only per script version.
+
+## The tag never enters a value or identity comparison (qg.11)
+
+The tag is host metadata, not part of a drawing's value — and the first
+private-CI run that compared two script VERSIONS through a field-walking
+snapshot caught exactly that (2026-11-21, run `scici-9b80724-fork-1121154410`:
+5 `test_pulse_seeds` identity cases red, every compared field equal but
+`('tag', 5)` vs `('tag', 4)` — today's probe and the base-commit copy share
+their creation lines while an earlier site differs, so every later tag of the
+module shifts by one, the stability caveat above doing exactly what it says).
+Neither side has "fixed" it since: the runs after it never collected the seed
+test at all (one ran a scripts commit that does not carry the file; the last
+was a 6-row perf-only re-run), so the passing parity was over cases that never
+included these.
+
+The by-design ruling this ships: the tag is NOT a dataclass field of any
+drawing type. It lives in a `Drawing` base slot (`types/base.py`), set by the
+lib's creation and setter functions right after construction, read explicitly
+by the viz journal for the host that needs it — and unreachable for every
+generic identity form, because `dataclasses.fields()` does not list it. A
+snapshot, a hash or a diff built from fields cannot carry the tag even if it
+wants to; a host that wants the tags asks the journal for them.
+`qg/tests/test_drawing_tag_identity.py` pins both halves: no drawing type
+(line, label, box, polyline, linefill, table, table cell) exposes the tag as
+a field, and two script versions whose shared call sites renumber — the CI
+failure's exact shape, one never-executed creation site added above them —
+field-snapshot identically while their tags demonstrably differ. RED before
+the slot move on the first assertion; green after.

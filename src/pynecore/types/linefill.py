@@ -11,7 +11,5 @@ class LineFill(Drawing):
     line2: Line  # Second line object
     color: _color.Color  # Fill color
 
-    # Stable id of the script call site that created the drawing
-    tag: int = -1
 
     vid: int = -1

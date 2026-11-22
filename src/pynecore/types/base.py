@@ -41,13 +41,20 @@ class Drawing:
     so its cost follows what changed. The writes all come from the lib's
     creation and setter functions — Pine cannot touch a drawing's fields
     directly — so the version cannot miss a mutation.
+
+    The call-site ``tag`` is a SLOT, deliberately NOT a dataclass field: it is
+    host metadata (a viewer's restyle key), not part of the drawing's value, so
+    the generic identity forms — anything that walks ``dataclasses.fields`` —
+    must not carry it into a snapshot, a hash or a diff. The viz journal emits
+    it explicitly for the host that needs it.
     """
 
-    __slots__ = ('_ver',)
+    __slots__ = ('_ver', 'tag')
 
     def __new__(cls, *args, **kwargs):
         obj = super().__new__(cls)
         object.__setattr__(obj, '_ver', 0)
+        object.__setattr__(obj, 'tag', -1)
         return obj
 
     def __setattr__(self, name: str, value) -> None:

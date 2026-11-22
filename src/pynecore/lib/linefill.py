@@ -38,8 +38,10 @@ def new(line1: Line, line2: Line, color: _color.Color, tag: int = -1) -> LineFil
         line1=line1,
         line2=line2,
         color=color,
-        tag=tag
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    linefill_obj.tag = tag
     linefill_obj.vid = next_vid()
     _registry.append(linefill_obj)
     return linefill_obj

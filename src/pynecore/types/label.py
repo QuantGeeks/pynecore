@@ -31,7 +31,5 @@ class Label(Drawing):
     force_overlay: bool = False
     text_formatting: Optional[_text.FormatEnum] = None
 
-    # Stable id of the script call site that created the drawing
-    tag: int = -1
 
     vid: int = -1

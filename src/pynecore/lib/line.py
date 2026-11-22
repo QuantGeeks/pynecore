@@ -124,8 +124,10 @@ def new(*args: Any, **kwargs: Any) -> Line:
         style=style or style_solid,
         width=width,
         force_overlay=force_overlay,
-        tag=kwargs.get('tag', -1)
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    line_obj.tag = kwargs.get('tag', -1)
     line_obj.vid = next_vid()
     _registry[line_obj] = None
     # Enforce Pine's max_lines_count cap: drop the oldest line (FIFO) past the limit.

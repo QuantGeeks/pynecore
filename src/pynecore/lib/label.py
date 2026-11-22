@@ -146,8 +146,10 @@ def new(*args: Any, **kwargs: Any) -> Label:
         text_font_family=text_font_family or _font.family_default,
         force_overlay=force_overlay,
         text_formatting=text_formatting or _text.format_none,
-        tag=kwargs.get('tag', -1)
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    label_obj.tag = kwargs.get('tag', -1)
     label_obj.vid = next_vid()
     _registry[label_obj] = None
     # Enforce Pine's max_labels_count cap: drop the oldest label (FIFO) past the limit.

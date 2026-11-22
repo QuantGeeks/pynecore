@@ -102,8 +102,10 @@ def new(position: _position.Position, columns: int, rows: int, bgcolor: _color.C
         border_color=border_color,
         border_width=border_width,
         force_overlay=force_overlay,
-        tag=tag
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    table.tag = tag
     table.vid = next_vid()
     _evict_position(position)
     _registry.append(table)

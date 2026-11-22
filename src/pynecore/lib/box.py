@@ -148,8 +148,10 @@ def new(*args: Any, **kwargs: Any) -> Box:
         text_font_family=text_font_family,
         text_formatting=text_formatting,
         force_overlay=force_overlay,
-        tag=kwargs.get('tag', -1),
     )
+    # The call-site tag is a slot, not a field (see Drawing): stamped after
+    # construction, before the object is visible.
+    box.tag = kwargs.get('tag', -1)
     box.vid = next_vid()
     _registry[box] = None
     # Enforce Pine's max_boxes_count cap: drop the oldest box (FIFO) past the limit.

@@ -6,12 +6,15 @@ from .base import Drawing
 
 
 @dataclass(slots=True)
-class TableCell:
+class TableCell(Drawing):
     """Represents a single cell in a table.
 
     A cell serializes as part of its table, and its writes ride the table's
     journal version: every field write bumps ``_owner._ver`` (the owning
     table adopts the cell when it stores it — see ``Table.get_cell``).
+    A ``Drawing`` base for the call-site ``tag`` slot — a cell created by a
+    ``table.cell``/setter call site carries that site's tag like any drawing,
+    still outside ``fields()``.
     """
     text: str = ""
     width: int | float = 0
@@ -32,8 +35,6 @@ class TableCell:
     merge_end_col: int = -1
     merge_end_row: int = -1
 
-    # Stable id of the script call site that created the cell
-    tag: int = -1
 
     # The table this cell lives in, set on adoption; a write marks it dirty
     _owner: 'Table' = field(default=None, init=False, repr=False, compare=False)
@@ -66,8 +67,6 @@ class Table(Drawing):
     # Cell data storage - using (column, row) as key
     cells: Dict[Tuple[int, int], TableCell] = field(default_factory=dict)
 
-    # Stable id of the script call site that created the drawing
-    tag: int = -1
 
     vid: int = -1
 

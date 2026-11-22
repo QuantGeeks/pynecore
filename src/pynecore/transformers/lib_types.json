@@ -10,7 +10,6 @@
    "force_overlay": "b",
    "left": "i",
    "right": "i",
-   "tag": "i",
    "text": "s",
    "text_color": "c",
    "text_font_family": "o:lib#FontFamilyEnum",
@@ -43,7 +42,6 @@
    "force_overlay": "b",
    "size": "o:lib#Size",
    "style": "o:lib#LabelStyleEnum",
-   "tag": "i",
    "text": "s",
    "text_font_family": "o:lib#FontFamilyEnum",
    "text_formatting": "o:lib#FormatEnum",
@@ -61,7 +59,6 @@
    "extend": "o:lib#Extend",
    "force_overlay": "b",
    "style": "o:lib#LineEnum",
-   "tag": "i",
    "vid": "i",
    "width": "i",
    "x1": "i",
@@ -74,7 +71,6 @@
    "color": "c",
    "line1": "o:lib#Line",
    "line2": "o:lib#Line",
-   "tag": "i",
    "vid": "i"
   },
   "Matrix": {
@@ -136,7 +132,6 @@
    "line_style": "o:lib#LineEnum",
    "line_width": "i",
    "points": "a:o:lib#ChartPoint",
-   "tag": "i",
    "vid": "i",
    "xloc": "o:lib#XLoc"
   },
@@ -158,7 +153,6 @@
    "frame_width": "i",
    "position": "o:lib#Position",
    "rows": "i",
-   "tag": "i",
    "vid": "i"
   },
   "TableCell": {
@@ -169,7 +163,6 @@
    "merge_end_row": "i",
    "merge_start_col": "i",
    "merge_start_row": "i",
-   "tag": "i",
    "text": "s",
    "text_color": "c",
    "text_font_family": "o:lib#FontFamilyEnum",

@@ -28,7 +28,5 @@ class Line(Drawing):
 
     force_overlay: bool = False
 
-    # Stable id of the script call site that created the drawing
-    tag: int = -1
 
     vid: int = -1
