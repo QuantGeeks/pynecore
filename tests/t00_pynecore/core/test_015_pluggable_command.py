@@ -220,10 +220,16 @@ def __test_get_params_includes_help__():
     cmd.register_plugin_param(CLIOption("--extra", default="x"))
 
     ctx = typer.Context(cmd)
-    param_names = [p.name for p in cmd.get_params(ctx)]
+    params = cmd.get_params(ctx)
+    param_names = [p.name for p in params]
 
     assert "extra" in param_names
-    assert "help" in param_names
+    # Click 8.3 renamed the implicit help option's internal param name from
+    # ``help`` to ``_click_default_help``; the invariant is that the option
+    # is present and last, not its name.
+    help_opts = [i for i, p in enumerate(params) if "--help" in getattr(p, "opts", ())]
+    assert help_opts, "the --help option must be present"
+    assert help_opts[-1] == len(params) - 1, "the --help option must be last"
 
 
 def __test_empty_decls_rejected__():

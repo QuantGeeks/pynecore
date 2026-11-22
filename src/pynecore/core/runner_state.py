@@ -65,9 +65,14 @@ _TYPE_EXCLUSIONS = ("Logger", "StreamHandler", "TypeVar", "_Feature", "ForkServe
 #: Process-level console handles, never per-runner state — and rich-dependent,
 #: so without them the tracked count depends on which extras an environment
 #: installed (ruling 2026-11-01: the pin's rich-less install counted 428, the
-#: ``[dev,cli]`` dev install 431; excluded, every environment counts 427).
+#: ``[dev,cli]`` dev install 431; excluded, every environment counts the same).
+#: The compiled rolling-sum twin's ``_na_float`` is the same leak across build
+#: environments: an import binding (``from ..types.na import na_float``), never
+#: rebound, present only where the Cython extension imports — without the
+#: exclusion a tree with the twin built counts one more name than one without.
 _NAME_EXCLUSIONS = {("pynecore.lib.log", n) for n in
-                    ("rich", "_log_console", "_log_console_width", "_stdout_is_tty", "handler")}
+                    ("rich", "_log_console", "_log_console_width", "_stdout_is_tty", "handler")} | {
+    ("pynecore.core._native_rolling_sum", "_na_float")}
 
 
 def _tracked() -> list[tuple[types.ModuleType, str]]:
