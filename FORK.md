@@ -60,6 +60,7 @@ system work.)
 | fix(qg): drawing_tags test leaked its pyne library into the process | test isolation: the registered-libraries snapshot restores | not filed (sev, 2026-10-31) | carried |
 | fix(qg): runner_state negative control was count-based and order-dependent | the control asserts the exact set difference, never a count | not filed (sev, 2026-10-31) | carried |
 | fix(core): the drawing-copy registry walked in address order | gate 2's fingerprint is process-order independent | not filed (sev, 2026-10-31) | carried |
+| fix(core): developing-batch ring entries pair at their delivering bar's tick | the batch transport of a lookahead_on HTF context is run-to-run exact — determinism rule (spec §4.9) | not filed (sev, 2026-11-21); write-up qg/upstream/devbatch-session-close-tie.md | carried |
 
 ## Engine findings without a patch
 
