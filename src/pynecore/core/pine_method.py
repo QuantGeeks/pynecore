@@ -187,6 +187,20 @@ def _adapt_exported_kwargs(exported: Exported, kwargs: dict) -> dict:
             for k, v in kwargs.items()}
 
 
+#: The drawing families' copy functions: the only ``copy`` methods that take
+#: the engine's call-site ``tag`` (see the DrawingTags lowering step)
+_DRAWING_COPIES = frozenset((line.copy, label.copy, box.copy))
+
+
+def _drop_copy_tag(method: str, func: Callable, kwargs: dict) -> dict:
+    """Drop the stamped ``tag`` from a ``copy`` call the receiver cannot take
+    it on: DrawingTags stamps every ``method_call('copy', ...)`` site, and
+    only the drawing copies above accept the keyword."""
+    if method == 'copy' and 'tag' in kwargs and func not in _DRAWING_COPIES:
+        return {k: v for k, v in kwargs.items() if k != 'tag'}
+    return kwargs
+
+
 def _dispatcher(cache: dict[str, tuple[Any, list | None, Callable]],
                 pin: str | None = None, vector: tuple | None = None) -> Callable[..., Any]:
     """Create a ``method_call`` dispatch entry bound to one dispatch cache.
@@ -251,7 +265,12 @@ def _dispatcher(cache: dict[str, tuple[Any, list | None, Callable]],
             # Support for builtin methods
             _method = _get_builtin_method(method, var)
             if _method is not None:
-                return _method(var, *args, **kwargs)
+                return _method(var, *args, **_drop_copy_tag(method, _method, kwargs))
+
+            # A copy reached through any non-builtin path (a module attribute, an
+            # exported method) can never be a drawing copy; drop the stamp first
+            if method == 'copy':
+                kwargs.pop('tag', None)
 
             # Modules
             try:
@@ -299,10 +318,13 @@ def _dispatcher(cache: dict[str, tuple[Any, list | None, Callable]],
                     captures: tuple[str, ...] | None = getattr(method, '__pyne_closure__', None)
                     if captures is not None:
                         args = args[len(captures):]
-                return _method(var, *args, **kwargs)
+                return _method(var, *args,
+                               **_drop_copy_tag(method.__name__, _method, kwargs))
 
             if __pyne_captures__ is not None:
                 args = __pyne_captures__ + args
+            if method.__name__ == 'copy':
+                kwargs.pop('tag', None)
             return _bound_method(method, cache, pin, vector)(var, *args, **kwargs)
 
         return None

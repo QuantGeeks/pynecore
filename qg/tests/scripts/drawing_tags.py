@@ -1,6 +1,7 @@
 """
 @pyne
 """
+from pynecore.core.pine_method import method_call
 from pynecore.lib import (
     bar_index, box, chart, color, label, line, linefill, polyline, position, script, table,
 )
@@ -26,5 +27,8 @@ def main():
         # call site of line.new, so a distinct tag; and a write through another
         # cell_set_text site to a cell that already exists keeps its creator's
         # tag.
-        line.new(1, 100.0, 6, 110.0)
+        second: Persistent[Line] = line.new(1, 100.0, 6, 110.0)
         table.cell_set_text(tbl, 0, 0, "A2")
+        # the METHOD form of copy, the dispatch a compiled Pine script rides:
+        # stamped like the lib call, with this call site's own tag
+        mth: Persistent[Line] = method_call('copy', second)

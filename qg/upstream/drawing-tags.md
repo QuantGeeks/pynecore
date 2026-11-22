@@ -1,6 +1,7 @@
 # Design: engine call-site tags on every drawing object
 
-**PyneCore version:** 6.10.10.
+**PyneCore version:** 6.10.10+qg.9 (tags), 6.10.10+qg.10 (method-form copy,
+per-module tag ranges).
 
 ## The problem
 
@@ -39,15 +40,17 @@ per-viewer style on anything stable.
 
 ## Our evidence (fork tests, synthetic data only)
 
-`qg/tests/test_drawing_tags.py`: a script with eleven creation sites (one per
-family, a `.copy()`, a `table.cell`, a `cell_set_*` that creates its cell, a
-second site of the same constructor on a later bar) — every object reports the
-tag of the site that created it, the copy its own site's tag (not the
-source's), a cell keeps its creator's tag on later writes, and two fresh runs
-produce identical tag sets (`first == second`). The snapshot serializes the
-tag of every family. Byte-identity of computed output is the drift gate's job
-(FORK.md): the tag is stamped by a lowering pass that only appends a keyword
-argument, and the golden rows are bit-identical.
+`qg/tests/test_drawing_tags.py`: a script with twelve creation sites (one per
+family, a `.copy()` in both syntaxes, a `table.cell`, a `cell_set_*` that
+creates its cell, a second site of the same constructor on a later bar) —
+every object reports the tag of the site that created it, the copy its own
+site's tag (not the source's) in both syntaxes, a cell keeps its creator's tag
+on later writes, an `array.copy` through the same stamped dispatch keeps
+working, the script module and an imported library module never share a
+number, and two fresh runs produce identical tag sets (`first == second`). The
+snapshot serializes the tag of every family. Byte-identity of computed output
+is the drift gate's job (FORK.md): the tag is stamped by a lowering pass that
+only appends a keyword argument, and the golden rows are bit-identical.
 
 ## The change
 
@@ -55,11 +58,27 @@ A `DrawingTags` lowering step (after `CallInline`, before `FunctionIsolation`,
 so an inlined wrapper's copies are numbered like the sites they became and the
 keyword rides along the anchored call sites) appends `tag=<n>` to every
 drawing-creation call — `lib.{line,label,box,polyline,linefill,table}.{new}`,
-the `.copy()` forms, `table.cell` and the `table.cell_set_*` setters (a setter
-that first creates the cell stamps it; `method_call('copy', …)` is excluded
-because array/matrix/map share that method name). The counter is per module,
-pre-order source order. Tags are engine-only: no script input, no computed
-value change.
+the `.copy()` forms (the `line.copy(x)` call and the compiled-Pine
+`method_call('copy', x)` dispatch alike: both are the copy site, so both carry
+its tag; the dispatch drops the keyword for receivers that are not drawings,
+because array/matrix/map share the method name), `table.cell` and the
+`table.cell_set_*` setters (a setter that first creates the cell stamps it).
+Tags are engine-only: no script input, no computed value change.
+
+Each module numbers its sites from `tag_base(module_name)` — a stable hash of
+the module's name — so the tags of a script and of the libraries it imports
+never collide however each counts its own call sites (qg.10; in qg.9 every
+module counted from 0 and a script's site 0 could share a number with its
+library's site 0). A rename is a script-version change: the module's tags move
+with it.
+
+## The stability caveat
+
+The numbers are assigned in pre-order over the tree AFTER `CallInline`, so
+moving a creation call into or out of a wrapper that gets inlined — or adding
+a creation call above another site — renumbers every later site of that
+module. Tags are comparable only within one script version; a host keying a
+restyle on them pins the version with the script.
 
 ## The open question
 

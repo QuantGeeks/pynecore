@@ -18,13 +18,40 @@ Two call shapes create drawings:
   creation method of every family;
 - the builtin-method dispatch ``method_call('<method>', obj, ...)``, which
   forwards its keywords to the lib function — for the methods whose names
-  exist only on drawing namespaces. ``copy`` is deliberately excluded there:
-  ``array.copy`` / ``matrix.copy`` / ``map.copy`` share the name, and a tag
+  exist only on drawing namespaces. ``copy`` is stamped there too (both
+  syntaxes of a copy are the copy site, so both carry its tag); the dispatch
+  drops the keyword for receivers that are not drawings, because
+  ``array.copy`` / ``matrix.copy`` / ``map.copy`` share the name and a tag
   they cannot accept would turn those calls into TypeErrors.
+
+Each module numbers its sites from :func:`tag_base` of its module name, so
+the tags of a script and of the libraries it import never collide however
+each counts its own call sites; a rename is a script-version change.
+
+Stability caveat: the numbers are assigned in pre-order over the tree AFTER
+CallInline, so moving a creation call into or out of a wrapper that gets
+inlined — or adding a creation call above another site — renumbers every
+later site of that module. Tags are comparable only within one script
+version.
 """
 import ast
+import hashlib
 
 from . import ast_walk
+
+#: Sites each module's tag range holds before it spills into a neighbor's
+_TAG_SPACING = 1 << 20
+
+
+def tag_base(module_name: str) -> int:
+    """The base of a module's tag range: a stable function of the module's
+    name, so a script and the libraries it imports never share tag numbers
+    however each counts its own call sites. A name change is a script-version
+    change: the tags of that module move with it."""
+    if not module_name:
+        return 0
+    digest = hashlib.blake2b(module_name.encode(), digest_size=8).digest()
+    return int.from_bytes(digest) % (1 << 42) * _TAG_SPACING
 
 #: The ``lib.<namespace>.<method>`` creation calls that stamp a tag
 _DRAWING_CALLS = frozenset(
@@ -40,19 +67,20 @@ _DRAWING_CALLS = frozenset(
     for method in methods
 )
 
-#: Method names that only drawing namespaces define, for the ``method_call``
-#: dispatch form (see the module docstring for why ``copy`` is absent)
+#: Method names for the ``method_call`` dispatch form: the drawing methods
+#: whose names only drawing namespaces define, plus ``copy`` (both syntaxes of
+#: a copy are the copy site; the dispatch drops the tag for non-drawings)
 _DRAWING_METHODS = frozenset(
     name.rpartition('.')[2]
     for name in _DRAWING_CALLS
-    if name not in ('lib.label.copy', 'lib.line.copy', 'lib.box.copy')
-)
+) | {'copy'}
 
 
 class DrawingTagsTransformer(ast.NodeTransformer):
     """Inject the call-site ``tag`` keyword into drawing-creation calls."""
 
-    def __init__(self) -> None:
+    def __init__(self, module_name: str = '') -> None:
+        self._base = tag_base(module_name)
         self._next_tag = 0
 
     def visit_Module(self, node: ast.Module) -> ast.Module:
@@ -68,8 +96,10 @@ class DrawingTagsTransformer(ast.NodeTransformer):
     def visit_Call(self, node: ast.Call) -> ast.Call:
         if self._tagged_call_site(node):
             if not any(keyword.arg == 'tag' for keyword in node.keywords):
+                assert self._next_tag < _TAG_SPACING, \
+                    "a module's drawing call sites must stay under tag spacing"
                 node.keywords.append(
-                    ast.keyword(arg='tag', value=ast.Constant(value=self._next_tag)))
+                    ast.keyword(arg='tag', value=ast.Constant(value=self._base + self._next_tag)))
                 self._next_tag += 1
         self.generic_visit(node)
         return node

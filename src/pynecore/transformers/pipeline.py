@@ -261,8 +261,11 @@ LOWERING: Sequence[Step | Phase] = (
     # The engine's call-site tag on drawing creation. After CallInline, so an
     # inlined wrapper's copies are numbered like the sites they became, and
     # before FunctionIsolation, whose anchored call sites replace the callee
-    # expression: the tag keyword stays on the call and rides along
-    Step('DrawingTags', _visit(DrawingTagsTransformer), user_code_only=True),
+    # expression: the tag keyword stays on the call and rides along. The
+    # module's stem is its name: each module's tag range is keyed by it
+    Step('DrawingTags',
+         lambda tree, ctx: DrawingTagsTransformer(ctx.path.stem).visit(tree),
+         user_code_only=True),
     # Call-site classification needs the var/series slots, so the isolation step
     # must run after Persistent and Series
     Step('FunctionIsolation', _function_isolation),
