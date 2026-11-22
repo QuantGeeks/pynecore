@@ -61,6 +61,7 @@ system work.)
 | fix(qg): runner_state negative control was count-based and order-dependent | the control asserts the exact set difference, never a count | not filed (sev, 2026-10-31) | carried |
 | fix(core): the drawing-copy registry walked in address order | gate 2's fingerprint is process-order independent | not filed (sev, 2026-10-31) | carried |
 | fix(core): developing-batch ring entries pair at their delivering bar's tick | the batch transport of a lookahead_on HTF context is run-to-run exact — determinism rule (spec §4.9) | not filed (sev, 2026-11-21); write-up qg/upstream/devbatch-session-close-tie.md | carried |
+| perf(core): a same-timeframe lookahead_on context batches like lookahead_off | a same-TF ON context pairs the same bar as OFF on history (no aggregator → the confirmed-time rule is lookahead-blind), so the blanket ON exclusion cost the batch transport for nothing — measured 2x on a 63-column, 41,340-bar twin (20.2 s → 10.9 s, private CI) | not filed (sev, 2026-11-21) | carried |
 
 ## Engine findings without a patch
 
