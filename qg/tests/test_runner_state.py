@@ -13,14 +13,21 @@ def __test_tracked_names_count_is_environment_independent__(monkeypatch):
     # The compiled rolling-sum twin imports only where it is built; its import
     # binding must not move the count between build environments
     assert "pynecore.core._native_rolling_sum:_na_float" not in names
-    # Negative control: with the exclusion emptied and the scan recomputed, the
-    # count differs and one of the excluded names is back -- which one depends
-    # on whether this environment installed rich / built the twin (the point
-    # of the fix).
+    # Negative control: rescan with the exclusions emptied. WHICH excluded
+    # names the live scan can see depends on the invocation -- the twin only
+    # once something imported it, lib.log's console names only after a first
+    # log call, and its ``rich`` only where PYNE_NO_COLOR_LOG left it None
+    # (the upstream tests/conftest sets it) -- and lazy caches cut the other
+    # way (plot/request ``_lib`` start as tracked ``None``s and drop out of
+    # the rescan once a suite run resolves them, which once made a rescan
+    # count of 443 look like a pin violation when it was only ordering). So
+    # the invariant is the exact set difference, never a count: the rescan's
+    # gains over the frozen set are precisely the excluded names visible to
+    # it, and nothing else appears that the freeze missed.
+    excluded = {f"{m}:{k}" for m, k in rs._NAME_EXCLUSIONS}
     monkeypatch.setattr(rs, "_NAME_EXCLUSIONS", set())
-    recomputed = {f"{m.__name__}:{k}" for m, k in rs._tracked()}
-    assert len(recomputed) > len(names)
-    assert ("pynecore.lib.log:_log_console" in recomputed) or ("pynecore.lib.log:rich" in recomputed)
+    without = {f"{m.__name__}:{k}" for m, k in rs._tracked()}
+    assert without - set(names) == excluded & without
 
 
 def __test_every_syminfo_slot_exists_at_import__():
