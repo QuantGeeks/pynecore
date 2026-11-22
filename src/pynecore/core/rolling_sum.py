@@ -46,7 +46,7 @@ from operator import add as _add
 from typing import Any
 
 from .safe_convert import native_int
-from .series import SeriesImpl
+from .series import BufferGrowthNeeded, SeriesImpl
 from ..types.na import na_float
 
 __all__ = ['SUM_MODES', 'sum_fires', 'SumMachine', 'rolling_sum_step',
@@ -180,6 +180,7 @@ class SumMachine:
     __slots__ = ('summ', 'compensation', 'seen', 'window', 'capacity',
                  'ring', 'ring_cap', 'slot',
                  'values', 'values_cap', 'values_size', 'values_pos', 'values_bar',
+                 'values_overflowed',
                  'memo', 'journal', 'ring_gen', 'values_gen', 'counter')
 
     def __init__(self) -> None:
@@ -197,6 +198,11 @@ class SumMachine:
         self.values_size = 0
         self.values_pos = 0
         self.values_bar: Any = -1
+        # Whether the window ring has overwritten its oldest value at least
+        # once (see ``SeriesImpl._overflowed``): the history below the window
+        # is gone, so a walk past the stored size needs a bigger buffer from
+        # bar 0 — a growth restart — not a crash and not a wrong sum.
+        self.values_overflowed = False
         self.memo: tuple | None = None
         self.journal: _Journal | None = None
         self.ring_gen = 0
@@ -296,6 +302,7 @@ class SumMachine:
                     win_at = pos
                     win_old = values[pos]
                     values[pos] = value
+                    self.values_overflowed = True
                 self.values_bar = bar
             # The re-baseline reads the raw window down to offset ``length - 1``. Grow
             # the window so that offset stays addressable for lengths beyond the
@@ -586,9 +593,19 @@ class SumMachine:
         """The window offsets ``start``..``stop - 1`` as one list, oldest first —
         the ``series[start:stop].oldest`` read of a ``SeriesImpl``.
 
-        :raises IndexError: When ``stop`` is past the stored history.
+        A ``stop`` past the stored history means the window ring discarded the
+        bars the walk needs: a growth request (TradingView restarts with a
+        bigger buffer when a historical read outruns one — RE10143's manual),
+        which the runner serves by replaying from bar 0.
+
+        :raises BufferGrowthNeeded: When ``stop`` is past the stored history
+            because the ring discarded it.
+        :raises IndexError: When ``stop`` is past the stored history without a
+            discard (a genuinely unguarded walk — an invariant).
         """
         if stop > self.values_size:
+            if self.values_overflowed:
+                raise BufferGrowthNeeded(stop, self.values_cap - 1)
             raise IndexError("Slice stop index out of range!")
         if start > stop:
             start = stop
@@ -619,7 +636,7 @@ class SumMachine:
         return (journal, self.summ, self.compensation, self.seen, self.window,
                 self.capacity, self.ring, self.ring_cap, self.slot, self.values,
                 self.values_cap, self.values_size, self.values_pos, self.values_bar,
-                self.ring_gen, self.values_gen)
+                self.ring_gen, self.values_gen, self.values_overflowed)
 
     def __pyne_restore__(self, token: tuple) -> None:
         """Roll the machine back to a :meth:`__pyne_snapshot__` token.
@@ -664,7 +681,7 @@ class SumMachine:
                 raise RuntimeError(_STALE_TOKEN_ERROR)
         (_journal, self.summ, self.compensation, self.seen, self.window, self.capacity,
          ring, self.ring_cap, self.slot, values, self.values_cap, size, self.values_pos,
-         self.values_bar, ring_gen, values_gen) = token
+         self.values_bar, ring_gen, values_gen, self.values_overflowed) = token
         memo = self.memo
         if memo is not None and memo[0][0] > self.seen + 1:
             self.memo = None

@@ -168,6 +168,19 @@ _script: script = None  # type: ignore[assignment]
 #: declaration always wins over this, and a series' own value over both.
 _max_bars_back_default: int = 0
 
+#: The history limit a growth restart learned this run (0 = none yet).
+#: TradingView's runtime sizes a buffer from its declaration, the
+#: ``max_bars_back()`` function or the engine default only INITIALLY
+#: (RE10143's manual): when a historical read goes past that, the system
+#: "increases that buffer's size and restarts the script". The runner keeps
+#: the deepest offset a restart served here, and every series constructed
+#: afterwards starts at ``max(initial limit, this)`` — the replay must keep
+#: the history that triggered the growth, or it hits the same request again.
+#: Run-scoped: reset when ``run_iter`` starts; per-runner through the state
+#: swap like every lowercase lib global. A realtime read never grows anything
+#: (TradingView resizes historical buffers only while the script loads).
+_max_bars_back_learned: int = 0
+
 # Chart (main-series) timeframe, propagated into request.security children so
 # ``timeframe.main_period`` there reports the chart TF instead of the context's
 # own period. ``None`` on the chart side, where ``_script`` carries it directly.

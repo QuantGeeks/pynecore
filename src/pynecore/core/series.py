@@ -5,9 +5,41 @@ from types import ModuleType
 
 from ..types.na import NA, na_float
 
-__all__ = ['SeriesImpl', 'inline_series']
+__all__ = ['SeriesImpl', 'BufferGrowthNeeded', 'inline_series']
 
 T = TypeVar('T')
+
+
+class BufferGrowthNeeded(RuntimeError):
+    """A historical read a larger buffer could serve — the runner restarts.
+
+    TradingView (the RE10143 page, "The requested historical offset is beyond
+    the historical buffer's limit"): the declaration, ``max_bars_back()`` and
+    the engine default set a buffer's INITIAL size, and "if the script
+    requests data from beyond an initial buffer's limit while executing
+    across other historical bars, the system increases that buffer's size and
+    restarts the script. This process repeats as necessary until the system
+    reaches the restart limit". After the script loads the system "does not
+    continue to resize historical buffers", so a realtime read beyond the
+    limit is the error itself.
+
+    :attr:`needed` is the offset that must stay addressable (the runner's
+    learned floor rises to it before the restart), :attr:`limit` the limit
+    that failed. The message is TradingView's RE10143 text, so a growth that
+    cannot be served surfaces as that error unchanged.
+    """
+
+    def __init__(self, needed: int, limit: int):
+        super().__init__(f"The requested historical offset ({needed}) is beyond "
+                         f"the historical buffer's limit ({limit})")
+        self.needed = needed
+        self.limit = limit
+
+
+def _realtime() -> bool:
+    """Whether the executing bar is a realtime bar (no buffer growth there)."""
+    bs = getattr(SeriesImpl._lib, 'barstate', None)
+    return bool(getattr(bs, 'isrealtime', False))
 
 # Interned na sentinel of untyped series (element type unknown at transform
 # time). The ``not (x == x)`` guards treat it and the native nan as the same na.
@@ -28,7 +60,8 @@ class SeriesImpl(Generic[T]):
     __slots__ = ('_buffer',
                  '_max_bars_back', '_max_bars_back_set',
                  '_capacity', '_write_pos', '_size',
-                 '_last_bar_index', '_na', '_compacted', '_as_float')
+                 '_last_bar_index', '_na', '_compacted', '_as_float',
+                 '_hard_cap', '_overflowed')
 
     # MEASURED (probes m601/m602, BINANCE:BTCUSDT 30m): TradingView serves 5000 bars of
     # history for EVERY series — builtin, user-defined and ``ta.*`` output alike, under
@@ -36,11 +69,16 @@ class SeriesImpl(Generic[T]):
     # smaller default silently returns na for deeper reads instead of the value TV shows.
     DEFAULT_MAX_BARS_BACK = 5000  # This can be set globally by indicator or strategy commands
     MAXIMUM_MAX_BARS_BACK = 5000  # This is the maximum allowed value
+    # TradingView's Limitations page: "some built-in series like open, high, low, close
+    # and time have larger historical buffers that can reference up to 10,000 bars" —
+    # the ceiling a growth request on those series may reach.
+    DEEP_BUFFER_MAX_BARS_BACK = 10000
 
     _lib: ModuleType = None  # Placeholder for the lib module
 
     @classmethod
-    def default_max_bars_back(cls, explicit: int | None = None) -> int:
+    def default_max_bars_back(cls, explicit: int | None = None,
+                              hard_cap: int | None = None) -> int:
         """The buffer limit a new series starts with.
 
         Resolution order: the series' own explicit value (a per-variable
@@ -48,9 +86,14 @@ class SeriesImpl(Generic[T]):
         (``max_bars_back=`` sizes every series), the host's engine default
         (``new_runner_state(max_bars_back_default=...)``, bounding series
         memory for hosts whose scripts index shallowly), and finally the
-        measured TradingView default above.
+        measured TradingView default above. Whatever the chain resolves to is
+        only the INITIAL size (TradingView, RE10143): a read the runner grew
+        the buffers for (``lib._max_bars_back_learned``) floors it, clamped by
+        ``hard_cap`` — 5000 for a general series, 10000 for the
+        open/high/low/close/time builtins.
 
         :param explicit: The series' explicitly declared limit, if any
+        :param hard_cap: The ceiling this series' buffer may grow to
         :raises ValueError: If the script declaration exceeds the maximum
         """
         if explicit:
@@ -69,15 +112,26 @@ class SeriesImpl(Generic[T]):
             if declared > cls.MAXIMUM_MAX_BARS_BACK:
                 raise ValueError(
                     f"The max_bars_back cannot exceed {cls.MAXIMUM_MAX_BARS_BACK}!")
-            return declared
-        default = getattr(lib, "_max_bars_back_default", 0)
-        if default:
-            return default
-        return cls.DEFAULT_MAX_BARS_BACK
+            resolved = declared
+        else:
+            default = getattr(lib, "_max_bars_back_default", 0)
+            resolved = default if default else cls.DEFAULT_MAX_BARS_BACK
+        # The floor a growth restart learned: the series constructed after it
+        # must keep the history that triggered the growth, or the replay hits
+        # the same request again. Still an INITIAL size in TradingView's
+        # terms — a runtime ``max_bars_back`` call can shrink below it again.
+        learned = getattr(lib, "_max_bars_back_learned", 0)
+        if learned > resolved:
+            resolved = learned
+        cap = hard_cap if hard_cap is not None else cls.MAXIMUM_MAX_BARS_BACK
+        if resolved > cap:
+            resolved = cap
+        return resolved
 
     # noinspection PyMissingConstructor
     def __init__(self, max_bars_back: int | None = None, na_value: T | None = None,
-                 compacted: bool = False, as_float: bool = False):
+                 compacted: bool = False, as_float: bool = False,
+                 hard_cap: int | None = None):
         """
         :param max_bars_back: Optional initial capacity for historical lookback.
                               If not provided, :meth:`default_max_bars_back`
@@ -99,6 +153,9 @@ class SeriesImpl(Generic[T]):
                          a Pine int is a double at runtime, so an int series must
                          not hand back the Python int a literal or a counter put
                          in; a non-number (an na object) is stored as the nan.
+        :param hard_cap: The ceiling this series' buffer may grow to through a
+                         restart (5000 in general; the open/high/low/close/time
+                         builtins pass :attr:`DEEP_BUFFER_MAX_BARS_BACK`).
         """
         # Importing the lib module here to avoid circular imports
         if not SeriesImpl._lib:
@@ -108,11 +165,18 @@ class SeriesImpl(Generic[T]):
         self._na: T | NA[T] = _NA_UNTYPED if na_value is None else na_value
         self._compacted = compacted
         self._as_float = as_float
+        self._hard_cap = hard_cap if hard_cap is not None else self.MAXIMUM_MAX_BARS_BACK
 
-        self._max_bars_back = self.default_max_bars_back(max_bars_back)
+        self._max_bars_back = self.default_max_bars_back(max_bars_back, self._hard_cap)
         self._max_bars_back_set = max_bars_back or 0
         # Internal capacity is max_bars_back + 1 (for current candle + historical bars)
         self._capacity = self._max_bars_back + 1
+        # Whether the ring has overwritten the oldest value at least once: the
+        # history below the buffer is gone, so a read past the stored size can
+        # never be filled by waiting — it needs a bigger buffer from bar 0 (a
+        # growth restart), never a silent na. Survives a resize, which keeps
+        # only what the old capacity still held.
+        self._overflowed = False
 
         # Grown by append until it reaches ``_capacity``, then written circularly.
         # Allocating the full capacity up front would cost every series the deepest
@@ -150,8 +214,8 @@ class SeriesImpl(Generic[T]):
         """
         if new_max_bars_back <= 0:
             raise ValueError("The max_bars_back must be a positive integer!")
-        if new_max_bars_back > SeriesImpl.MAXIMUM_MAX_BARS_BACK:
-            raise ValueError(f"The max_bars_back cannot exceed {self.MAXIMUM_MAX_BARS_BACK}!")
+        if new_max_bars_back > self._hard_cap:
+            raise ValueError(f"The max_bars_back cannot exceed {self._hard_cap}!")
 
         if new_max_bars_back == self._max_bars_back:
             return  # No change
@@ -249,6 +313,7 @@ class SeriesImpl(Generic[T]):
             else:
                 self._write_pos += 1
             self._buffer[pos] = value
+            self._overflowed = True
 
         # Store the last bar index to prevent adding more than one value per bar
         self._last_bar_index = bar_index
@@ -274,6 +339,7 @@ class SeriesImpl(Generic[T]):
             else:
                 self._write_pos += 1
             self._buffer[pos] = value
+            self._overflowed = True
 
     def set(self, value: T | NA[T]) -> T | NA[T]:
         """
@@ -293,7 +359,7 @@ class SeriesImpl(Generic[T]):
         self._buffer[pos] = value
         return value
 
-    def _snapshot(self) -> tuple[list[T | NA[T]], int, int, int, int, int, int]:
+    def _snapshot(self) -> tuple[list[T | NA[T]], int, int, int, int, int, int, bool]:
         """Capture the full buffer state for a rollback baseline.
 
         Used by the live ``request.security_lower_tf`` LTF baseline to roll a
@@ -308,9 +374,10 @@ class SeriesImpl(Generic[T]):
         :return: An opaque tuple consumed only by :meth:`_restore`.
         """
         return (self._buffer.copy(), self._size, self._write_pos, self._last_bar_index,
-                self._max_bars_back, self._max_bars_back_set, self._capacity)
+                self._max_bars_back, self._max_bars_back_set, self._capacity,
+                self._overflowed)
 
-    def _restore(self, snapshot: tuple[list[T | NA[T]], int, int, int, int, int, int]) -> None:
+    def _restore(self, snapshot: tuple[list[T | NA[T]], int, int, int, int, int, int, bool]) -> None:
         """Restore the buffer state captured by :meth:`_snapshot` (in place).
 
         The same snapshot may be restored repeatedly (one save, many replay
@@ -319,10 +386,11 @@ class SeriesImpl(Generic[T]):
         :param snapshot: A value returned by :meth:`_snapshot`.
         """
         (buffer, self._size, self._write_pos, self._last_bar_index,
-         self._max_bars_back, self._max_bars_back_set, self._capacity) = snapshot
+         self._max_bars_back, self._max_bars_back_set, self._capacity,
+         self._overflowed) = snapshot
         self._buffer = buffer.copy()
 
-    def _restore_bar(self, snapshot: tuple[list[T | NA[T]], int, int, int, int, int, int]) -> None:
+    def _restore_bar(self, snapshot: tuple[list[T | NA[T]], int, int, int, int, int, int, bool]) -> None:
         """Same-bar rollback to a :meth:`_snapshot` baseline, O(changed slots).
 
         The loop-site rollback (``instance_state.__loop_state__``) restores a
@@ -342,7 +410,7 @@ class SeriesImpl(Generic[T]):
 
         :param snapshot: A value returned by :meth:`_snapshot`.
         """
-        buffer, size, write_pos, last_bar, mbb, mbb_set, cap = snapshot
+        buffer, size, write_pos, last_bar, mbb, mbb_set, cap, overflowed = snapshot
         if self._capacity == cap and self._max_bars_back == mbb \
                 and self._max_bars_back_set == mbb_set:
             own = self._buffer
@@ -365,6 +433,7 @@ class SeriesImpl(Generic[T]):
                 if size:  # a set before the first push rewrote the newest slot
                     own[size - 1] = buffer[size - 1]
                 self._size, self._write_pos, self._last_bar_index = size, write_pos, last_bar
+                self._overflowed = overflowed  # the tail never wrapped
                 return
             if bars == 1 and size == cap and self._size == cap \
                     and self._write_pos == write_pos % cap + 1:
@@ -373,6 +442,7 @@ class SeriesImpl(Generic[T]):
                 pos = write_pos - 1  # and a set that preceded it
                 own[pos] = buffer[pos]
                 self._write_pos, self._last_bar_index = write_pos, last_bar
+                self._overflowed = overflowed  # undo the overwrite's flag
                 return
         self._restore(snapshot)
 
@@ -418,15 +488,31 @@ class SeriesImpl(Generic[T]):
                 offset = 0
             else:
                 raise TypeError("Series indices must be numbers or slices")  # noqa
-        # Beyond the buffer's limit the read can never be served, whatever the
-        # bar count: TradingView's runtime error (RE10143), not a silent na.
+        # Beyond the buffer's limit TradingView's runtime is what answers, and
+        # HOW depends on the bar (RE10143's manual): on a historical bar the
+        # runtime grows the buffer and restarts the script — a growth request
+        # the runner serves, up to this series' hard cap; on a realtime bar
+        # (and past the cap) it is the RE10143 error itself, never a silent na.
         if offset > self._max_bars_back:
+            if offset <= self._hard_cap and not _realtime():
+                raise BufferGrowthNeeded(offset, self._max_bars_back)
             raise RuntimeError(
                 f"The requested historical offset ({offset}) is beyond the "
                 f"historical buffer's limit ({self._max_bars_back})")
         # Pine: out-of-range subscript -> na (covers both negative and
-        # positive past-end indices).
-        if offset < 0 or offset >= self._size:
+        # positive past-end indices) — EXCEPT when the ring has already
+        # discarded the history the read needs: the value is unknowable at
+        # this buffer size (a resize kept only what the old capacity held), so
+        # it grows (historical) or errors (realtime) instead of a silent na.
+        if offset < 0:
+            return self._na
+        if offset >= self._size:
+            if self._overflowed:
+                if not _realtime():
+                    raise BufferGrowthNeeded(offset, self._max_bars_back)
+                raise RuntimeError(
+                    f"The requested historical offset ({offset}) is beyond the "
+                    f"historical buffer's limit ({self._max_bars_back})")
             return self._na
         pos = self._write_pos - 1 - offset
         if pos < 0:
@@ -446,6 +532,17 @@ class SeriesImpl(Generic[T]):
             raise ValueError("Step value not supported in slice!")
 
         if stop > self._size:
+            # The window consumers' slices are guarded to stay within the
+            # stored history while the buffer never wrapped; past that point
+            # the ring has discarded what the walk needs, which is a growth
+            # request (historical) or the RE10143 error — the raw IndexError
+            # below stays the invariant for a genuinely unguarded slice.
+            if self._overflowed:
+                if not _realtime():
+                    raise BufferGrowthNeeded(stop, self._max_bars_back)
+                raise RuntimeError(
+                    f"The requested historical offset ({stop}) is beyond the "
+                    f"historical buffer's limit ({self._max_bars_back})")
             raise IndexError("Slice stop index out of range!")
 
         # Ensure start <= stop

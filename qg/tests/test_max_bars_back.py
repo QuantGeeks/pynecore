@@ -2,10 +2,13 @@
 from: the script declaration (``indicator(max_bars_back=)`` sizes every
 series), the ``max_bars_back(var, num)`` function (statement form lowered to
 the slot's setter), and the host's engine default
-(``new_runner_state(max_bars_back_default=)``). A read past the limit raises
-TradingView's runtime error (RE10143), never a silently wrong value; a read
-at exactly the limit is legal. The ``ta.*`` machines grow the source buffer
-past the engine default, so a length beyond it still computes."""
+(``new_runner_state(max_bars_back_default=)``). Each sets the INITIAL size:
+on historical bars a read past the limit grows the buffer (the runner
+restarts with a larger one), so a small-limit run matches the large-buffer
+run; a runtime shrink that re-applies on the replay is the RE10143 loop exit,
+never a silently wrong value. A read at exactly the limit is legal. The
+``ta.*`` machines grow the source buffer past the engine default, so a
+length beyond it still computes."""
 import sys
 from pathlib import Path
 
@@ -36,11 +39,13 @@ def __test_the_declaration_sizes_every_series__():
     assert [v["v"] for v in out[5:]] == [b.close for b in bars[:3]]
 
 
-def __test_a_read_past_the_declared_limit_raises__():
-    with pytest.raises(RuntimeError) as e:
-        _run(SCRIPTS / "mbb_declared_beyond.py")
-    assert str(e.value) == ("The requested historical offset (6) is beyond "
-                            "the historical buffer's limit (5)")
+def __test_a_read_past_the_declared_limit_grows_the_buffer__():
+    # declared 5, close[6] at bar 7: the historical read restarts the run with
+    # a bigger buffer instead of erroring, so the whole run matches what a
+    # large-enough declaration would have produced
+    bars = synthetic_bars(11, 8)
+    out = _run(SCRIPTS / "mbb_declared_beyond.py", bars)
+    assert [v["v"] for v in out] == [0.0] * 7 + [bars[1].close]
 
 
 def __test_the_function_form_resizes_the_series__():
@@ -60,15 +65,14 @@ def __test_the_engine_default_bounds_the_runner__():
     # bar 6 reads close[4] -> bars[2]; bar 7's guarded read is close[5] -> bars[2]
     assert [v["v"] for v in out[6:]] == [bars[2].close, bars[2].close]
 
-    # with the engine default at 4 the same script raises one past it
+    # with the engine default at 4 the same close[5] read grows the buffer
+    # once and the run is identical to the 5000-default one
     sys.modules.pop(script.stem, None)
     state = runner_state.new_runner_state(max_bars_back_default=4)
     try:
         runner_state.activate(state)
-        with pytest.raises(RuntimeError) as e:
-            _run(script, bars)
-        assert str(e.value) == ("The requested historical offset (5) is "
-                                "beyond the historical buffer's limit (4)")
+        grown = _run(script, bars)
+        assert grown == out
     finally:
         runner_state.discard(state)
 

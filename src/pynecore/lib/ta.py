@@ -172,6 +172,17 @@ def alma(series: Series[float], length: int, offset: float = 0.85, sigma: float 
             norm += w
         weights = [w / norm for w in weights]
 
+    # Grow the buffer so ``series[length - i - 1]`` stays addressable for lengths
+    # beyond the per-series default max_bars_back; without the seed the first read
+    # under a small declared limit pays a growth restart (the read itself still
+    # grows on historical bars). The resize is monotonic: a series ``length`` that
+    # dips low must not shrink the buffer, or the history a later increase needs
+    # would already be gone.
+    capacity: Persistent[int] = _SeriesImpl.default_max_bars_back()
+    if length > capacity:
+        capacity = length
+        max_bars_back(series, capacity)
+
     summ = 0.0
     for i, w in enumerate(weights):
         summ += series[length - i - 1] * w

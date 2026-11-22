@@ -135,6 +135,14 @@ from ..types.base import Drawing
 from ..types.matrix import Matrix
 from ..types.na import NA, na_float
 
+#: The builtin series slots whose buffers may grow to TradingView's deeper
+#: 10,000-bar ceiling (the Limitations page): the slot names the ``lib_series``
+#: transform gives the OHLCV/time globals (``__lib·close``, ...). Kept in sync
+#: with ``pynecore.transformers.lib_series.BUILTIN_GLOBAL_SERIES`` by hand —
+#: core does not import the transformers.
+_DEEP_SERIES = frozenset(f'__lib·{n}' for n in
+                         ('open', 'high', 'low', 'close', 'time'))
+
 __all__ = [
     '__resolve_slot__', '__bind_any__', '__slot_state__', '__bind_slot__',
     '__loop_state__', '__bind_loop__', '__bind_pinned__',
@@ -199,6 +207,12 @@ def _make_state(layout: dict[str, Any]) -> list:
     _state_epoch += 1
     state = list(layout['init'])
     compacted = layout.get('compacted', False)
+    # ``layout['names']`` is every slot's source name in slot order; the builtin
+    # OHLCV/time global series the ``lib_series`` transform declares as slots
+    # (``__lib·close``...) name the five TradingView keeps "larger historical
+    # buffers that can reference up to 10,000 bars" in (the Limitations page) —
+    # their growth ceiling, where every other series' is 5000.
+    names = layout.get('names', ())
     for slot, max_bars_back, elem in layout['series']:
         # A numeric series keeps the native nan as its na; an int series also
         # stores every value as a float (a Pine int is a double at runtime). A
@@ -206,7 +220,10 @@ def _make_state(layout: dict[str, Any]) -> list:
         state[slot] = SeriesImpl(max_bars_back,
                                  na_float if elem in ('float', 'int')
                                  else NA(bool) if elem == 'bool' else None,
-                                 compacted, elem == 'int')
+                                 compacted, elem == 'int',
+                                 SeriesImpl.DEEP_BUFFER_MAX_BARS_BACK
+                                 if slot < len(names) and names[slot] in _DEEP_SERIES
+                                 else None)
     # Trailing layout reference: slot addressing uses literal non-negative
     # indexes only, so the extra element is invisible to emitted code. It lets
     # a walker that meets a bare child state vector (fast-path slots hold the

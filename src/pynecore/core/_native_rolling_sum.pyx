@@ -29,6 +29,7 @@ import array as _array
 
 from . import rolling_sum as _rs
 from .safe_convert import native_int as _native_int
+from .series import BufferGrowthNeeded as _BufferGrowthNeeded
 from .series import SeriesImpl as _SeriesImpl
 from ..types.na import na_float as _na_float
 
@@ -103,6 +104,7 @@ cdef class _SumToken:
     cdef double summ, compensation
     cdef long long seen, window, capacity, ring_cap, slot
     cdef long long values_cap, values_size, values_pos
+    cdef bint values_overflowed
     cdef array.array ring, values
     cdef object values_bar
 
@@ -115,6 +117,7 @@ cdef class SumMachine:
     cdef long long ring_cap, slot
     cdef array.array values
     cdef long long values_cap, values_size, values_pos
+    cdef bint values_overflowed
     cdef object values_bar
     cdef object lib
     cdef bint memo_valid
@@ -146,6 +149,7 @@ cdef class SumMachine:
         self.values_cap = _SeriesImpl.default_max_bars_back() + 1
         self.values_size = 0
         self.values_pos = 0
+        self.values_overflowed = False
         self.values_bar = -1
         self.memo_valid = False
         self.journal = None
@@ -185,8 +189,13 @@ cdef class SumMachine:
         return self.values.data.as_doubles[pos]
 
     cdef int _check_stop(self, long long stop) except -1:
-        # The bound check of a ``SeriesImpl`` slice read
+        # The bound check of a ``SeriesImpl`` slice read: past the stored
+        # history with the ring having discarded it is a growth request (the
+        # runner replays from bar 0 with a bigger buffer), the raw IndexError
+        # the invariant for an unguarded walk
         if stop > self.values_size:
+            if self.values_overflowed:
+                raise _BufferGrowthNeeded(stop, self.values_cap - 1)
             raise IndexError("Slice stop index out of range!")
         return 0
 
@@ -335,6 +344,7 @@ cdef class SumMachine:
                     win_at = pos
                     win_old = vals[pos]
                     vals[pos] = value
+                    self.values_overflowed = True
                 self.values_bar = bar
             if clen > self.capacity:
                 self.capacity = clen
@@ -530,6 +540,7 @@ cdef class SumMachine:
         token.values_cap = self.values_cap
         token.values_size = self.values_size
         token.values_pos = self.values_pos
+        token.values_overflowed = self.values_overflowed
         token.values_bar = self.values_bar
         token.ring_gen = self.ring_gen
         token.values_gen = self.values_gen
@@ -587,6 +598,7 @@ cdef class SumMachine:
         self.values_cap = token.values_cap
         self.values_size = token.values_size
         self.values_pos = token.values_pos
+        self.values_overflowed = token.values_overflowed
         self.values_bar = token.values_bar
         self.ring_gen = token.ring_gen
         self.values_gen = token.values_gen

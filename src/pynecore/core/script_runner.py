@@ -70,6 +70,14 @@ __all__ = [
 ]
 
 LIVE_TRANSITION = OHLCV(timestamp=-1, open=-1, high=-1, low=-1, close=-1, volume=-1)
+
+#: How many times one ``run_iter`` may grow the series buffers and restart
+#: (TradingView, RE10143's manual: growth "repeats as necessary until the
+#: system reaches the restart limit" — the count itself is unpublished). A
+#: well-formed script restarts once or twice; a script whose reads keep
+#: outrunning every buffer (a length that grows with every bar) hits this and
+#: gets the RE10143 error, exactly as it exhausts TradingView's own limit.
+_GROWTH_RESTART_LIMIT = 100
 """Sentinel inserted between historical and live OHLCV data in the iterator."""
 
 _LAST_PATH_NODE = 2
@@ -1210,7 +1218,8 @@ class ScriptRunner:
                  '_config_dir', '_symbol_map', '_script_timeframe',
                  '_chart_bar_window',
                  'broker_balance', '_sim_logged_open_ids', '_inputs', '_settings', '_live',
-                 '_yield_intrabar', '_event_data')
+                 '_yield_intrabar', '_event_data', '_replay_bars', '_replay_peeked',
+                 '_growth_restarts')
 
     # noinspection PyProtectedMember
     def __init__(self, script_path: Path, ohlcv_iter: Iterable[OHLCV], syminfo: SymInfo, *,
@@ -1651,6 +1660,16 @@ class ScriptRunner:
         self.last_price: float | None = None
         self._trade_num = 0
 
+        # Buffer-growth restart state (TradingView, RE10143's manual: a
+        # historical read past a buffer's initial size "increases that buffer's
+        # size and restarts the script"). The historical loop retains every
+        # bar it consumed plus the one it peeked, so a restart can replay the
+        # feed from bar 0 through a fresh import; ``_growth_restarts`` counts
+        # the restarts of the current ``run_iter`` call.
+        self._replay_bars: list[OHLCV] = []
+        self._replay_peeked: OHLCV = LIVE_TRANSITION
+        self._growth_restarts = 0
+
         self.plot_writer = CSVWriter(plot_path) if plot_path else None
         # Visual data (plot styles + drawings) NDJSON writer. Journaling can also
         # run without a file: ``_viz_shadow`` drives the per-bar diff whose events
@@ -1965,6 +1984,10 @@ class ScriptRunner:
         Indicators yield ``(candle, plot_data)``, strategies ``(candle, plot_data, new_trades)``
         where ``new_trades`` are the trades closed on that bar.
 
+        A historical read past a buffer's limit restarts the run with a bigger
+        buffer (see :meth:`_run_iter_with_restarts`); the consumer sees one
+        row per bar either way.
+
         :param on_progress: Callback to call on every iteration
         :param on_tick: Optional per-update live callback (see :meth:`run`).
         :param copy_results: Yield a fresh ``plot_data`` dict and ``new_trades`` list on every
@@ -1974,10 +1997,103 @@ class ScriptRunner:
         :return: Iterator over the per-bar results
         :raises AssertionError: If the 'main' function does not return a dictionary
         """
-        results = self._run_iter(on_progress, on_tick)
+        results = self._run_iter_with_restarts(on_progress, on_tick)
         if not copy_results:
             return results
         return self._copy_results(results)
+
+    # noinspection PyProtectedMember
+    def _run_iter_with_restarts(self, on_progress: Callable[[datetime], None] | None = None,
+                                on_tick: Callable[[OHLCV], None] | None = None) \
+            -> Generator[tuple[OHLCV, dict[str, Any]] | tuple[OHLCV, dict[str, Any], list['Trade']],
+                         None, None]:
+        """
+        Drive :meth:`_run_iter`, serving buffer-growth requests by restarting.
+
+        TradingView sizes a series buffer from the declaration, the
+        ``max_bars_back()`` function or the engine default only INITIALLY
+        (RE10143's manual): a historical read past that size "increases that
+        buffer's size and restarts the script", repeating until the restart
+        limit. The restart here re-imports the script (a fresh module, fresh
+        per-call-site state) with ``lib._max_bars_back_learned`` covering the
+        requested offset, and replays the retained bars, so the replay equals
+        a run whose buffers were large enough from bar 0 — the failed attempt's
+        rows are re-yielded identically and swallowed here, and the output
+        writers (re-opened truncated by the fresh ``_run_iter``) are rewritten
+        wholesale by the replay.
+
+        Transparent to the consumer: exactly one row per bar crosses this
+        generator whatever the restart count — the service steps a live runner
+        one ``next()`` per warmup bar under a per-runner state, and a restart
+        inside a step must not disturb that rhythm.
+
+        A request the learned floor already covers (a runtime
+        ``max_bars_back(var, n)`` shrink that re-applies on every replay), the
+        restart limit, and the bar-magnifier strategy loop (its sub-bar feed
+        cannot be replayed) each surface as the RE10143 error instead.
+        """
+        import itertools
+        from .. import lib
+        from .series import BufferGrowthNeeded
+
+        lib._max_bars_back_learned = 0
+        self._growth_restarts = 0
+        gen = self._run_iter(on_progress, on_tick)
+        rows = 0        # rows this generator has yielded to the consumer
+        suppress = 0    # duplicate rows a replay re-yields before new ones
+        try:
+            while True:
+                try:
+                    item = next(gen)
+                except StopIteration:
+                    return
+                except BufferGrowthNeeded as growth:
+                    needed = growth.needed
+                    learned = lib._max_bars_back_learned
+                    if (needed <= learned or self._magnifier_iter is not None
+                            or self._growth_restarts >= _GROWTH_RESTART_LIMIT):
+                        # No restart can serve it: the floor already covers the
+                        # offset (a shrink outruns the growth), the sub-bar feed
+                        # cannot be replayed, or the restart limit is spent —
+                        # TradingView's runtime error either way.
+                        raise RuntimeError(str(growth)) from None
+                    self._growth_restarts += 1
+                    lib._max_bars_back_learned = needed
+                    # The bars the failed attempt consumed, its peeked one first
+                    # in the source's own order, then everything never consumed.
+                    replay = self._replay_bars
+                    self._replay_bars = []
+                    self.ohlcv_iter = itertools.chain(
+                        replay + [self._replay_peeked], self.ohlcv_iter)
+                    # Runner-level accumulators of the failed attempt start over;
+                    # the writers and the journal shadow are re-opened empty by
+                    # the fresh ``_run_iter`` and rewritten by the replay.
+                    self.equity_curve.clear()
+                    if self._viz_shadow is not None:
+                        self._viz_shadow.clear()
+                    # A fresh module for the restart, exactly as on construction
+                    self.script_module = import_script(
+                        self._script_path, inputs=self._inputs, settings=self._settings)
+                    self.script = self.script_module.main.script
+                    gen = self._run_iter(on_progress, on_tick)
+                    suppress = rows
+                    continue
+                if suppress:
+                    suppress -= 1
+                    continue
+                rows += 1
+                try:
+                    yield item
+                except KeyboardInterrupt as stop:
+                    # A stop thrown in between two bars must still reach the
+                    # runner's own stop handling (the broker settle) inside
+                    # ``_run_iter`` — forward it, then let it unwind here too
+                    gen.throw(stop)
+                    raise
+        finally:
+            # Closing this driver early (break, close()) must run the runner's
+            # cleanup now, not at the inner generator's garbage collection
+            gen.close()
 
     @staticmethod
     def _copy_results(results: Generator) -> Iterator:
@@ -3441,6 +3557,14 @@ class ScriptRunner:
             while next_item is not LIVE_TRANSITION:
                 candle = next_item
                 next_item = next(ohlcv_iterator, LIVE_TRANSITION)
+                # Retain both for a buffer-growth restart: every consumed
+                # historical bar (whatever path it took below — an stf gap, a
+                # calc_bars_count skip, an executed bar) and the peeked one,
+                # which is already consumed from the source. Live bars are
+                # never retained: growth is a historical-bar mechanism, and a
+                # realtime read past the limit is RE10143 outright.
+                self._replay_bars.append(candle)
+                self._replay_peeked = next_item
 
                 # --- Script-level higher timeframe ---
                 # The body runs once per COMPLETED HTF bar, on the chart bar whose
