@@ -99,6 +99,31 @@ The drain drops from 1.7× a bar's cost to 17% of it. The per-bar mean pays
 on a drawing-light script the bump is invisible. The drawing set is
 identical on both sides (`lines 177, labels 102, boxes 17`).
 
+### The ~7%, attributed and kept (measured 2026-11-22, one Mac, worktree)
+
+Isolated on a synthetic twin (30 persistent lines, two setters per line per
+bar — 60 field writes/bar, 3,000 bars, median of 3 rounds with the arms
+alternated, drain disabled so only the write path differs): with the bump
+`21.4 → 25.7 µs/bar` when it is switched on — **+4.3 µs/bar ≈ 72 ns per
+write**. The write-path itself is minimal — one slot read, one int add, the
+field's own `setattr` — and there is no cheaper chokepoint that cannot miss
+a mutation: every write comes through `Drawing.__setattr__` by construction.
+
+The one candidate reduction was measured and rejected: bump only when the
+written value differs from the current one. On the change-heavy pattern
+(every tick writes new prices) every comparison fails, so it pays the
+comparison ON TOP of the bump — `26.5 µs/bar` against `25.7` for the plain
+bump on the same twin — and it would risk missing an in-place mutation of a
+container field. Idempotent-write-heavy scripts would save; the measured
+house pattern does not.
+
+What the +9.9 µs/bar (the ~7%) buys on the drawing-heavy batch: the drain
+that re-serialized every drawing every bar (`240 µs` no-change) now
+re-serializes only what moved (`25 µs`) — the version bump IS the
+bookkeeping that lets the drain's cost follow what changed. On the live
+tick (run + drain) the same batch went `~380 → ~175 µs` (2.2×): the bump
+costs ~7% of a bar and returns ~54% of a tick.
+
 ## The open question
 
 None — the semantics are additive to the journal stream (a reader that
