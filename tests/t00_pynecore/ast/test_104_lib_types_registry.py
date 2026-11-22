@@ -76,6 +76,27 @@ def __test_lib_routes_are_current__():
     assert not changes, _REGENERATE + ". Changed:\n  " + "\n  ".join(changes)
 
 
+def __test_routes_are_measured_on_the_sources_function__():
+    """
+    A machine that built the natives has the C ``color.new`` bound in the
+    module -- pytest imports the lib long before the collector runs -- and a
+    C function classifies ``skip`` where the source's own function classifies
+    ``uniform``. The routes must describe the source's function, or the
+    registry this guard enforces differs between two machines.
+    """
+    module = _load_collector()
+    color = importlib.import_module('pynecore.lib.color')
+    real, color.new = color.new, len  # any C function: what a native shadow leaves
+    try:
+        routes = module.collect_live_sections()['routes']
+    finally:
+        color.new = real
+    assert 'lib.color.new' not in routes, (
+        f"routes followed the imported object ({routes.get('lib.color.new')!r}) "
+        "instead of the source's function — the registry would differ between "
+        "a natives-built machine and a pure one")
+
+
 def __test_schema_version_matches_the_collector__():
     """A shape change must bump the version the consumers pin"""
     module = _load_collector()

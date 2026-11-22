@@ -23,7 +23,10 @@ lib, because what they record only exists once the import hook has transformed
 it: ``routes``, the call-site route ``FunctionIsolationTransformer`` gives each
 lib callee (``ta.sma`` carries a slot layout, ``ta.highest`` is an overload
 dispatcher), and ``star_exports``, the ``__all__`` a ``from pynecore.lib...
-import *`` expands to. The transform reads both from here instead of
+import *`` expands to. Both are measured in a fresh interpreter with the
+optional natives turned off -- the running process's import of the lib is
+someone else's history -- so the file is the same whichever machine and
+whatever process generates it. The transform reads both from here instead of
 inspecting the live lib: the lib sources are not part of the pipeline hash,
 this file is, so a route-relevant lib edit invalidates cached script bytecode
 only through the regenerated file -- and ``test_104`` fails until it is
@@ -35,7 +38,9 @@ Usage:
 import ast
 import importlib
 import json
+import os
 import pkgutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -138,10 +143,10 @@ class LibTypeCollector:
                 names[f'{parent}.{leaf}' if parent else leaf] = entries[leaf]
 
         _resolve_aliases(names, aliases)
-        modules = self._import_lib()
+        live = collect_live_sections()
         return {'v': SCHEMA_VERSION, 'names': names, 'classes': self._collect_fields(),
                 'scalar_classes': self._collect_scalars(),
-                'routes': collect_routes(), 'star_exports': collect_star_exports(modules)}
+                'routes': live['routes'], 'star_exports': live['star_exports']}
 
     def _import_lib(self) -> list[types.ModuleType]:
         """
@@ -238,9 +243,48 @@ class LibTypeCollector:
             f.write('\n')
 
 
-def collect_routes() -> dict[str, str]:
+def collect_live_sections() -> dict[str, Any]:
     """
-    The call-site route of every lib callee path that does not route uniform.
+    The two sections measured on the imported lib: ``routes`` and
+    ``star_exports``.
+
+    Both are properties of live objects, and the running process's import of
+    the lib is not a controlled thing: a test session has the lib imported
+    long before this runs, from whichever path came first, under whatever
+    import-hook state someone else's test left behind -- and wherever the
+    natives were built, ``lib.color.new`` is the C function, which classifies
+    ``skip`` against the source's own function's ``uniform``. Measured there,
+    the registry differs between two machines and between two runs of one
+    suite. The probe imports the checkout's own lib with the natives off --
+    every module of it, because a submodule is an attribute of its package
+    only once loaded -- and measures that.
+
+    :return: The ``routes`` and ``star_exports`` sections, ready to embed
+    """
+    probe = (
+        "import importlib.util, json, sys\n"
+        "spec = importlib.util.spec_from_file_location"
+        "('lib_type_collector', sys.argv[1])\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(module)\n"
+        "src = module.Path(sys.argv[1]).parent.parent / 'src'\n"
+        "modules = module.LibTypeCollector(project_src=src)._import_lib()\n"
+        "print(json.dumps({'routes': module._collect_routes_in_process(),\n"
+        "                  'star_exports': module.collect_star_exports(modules)}))\n"
+    )
+    env = dict(os.environ, PYNE_NO_NATIVE_COLOR='1')
+    proc = subprocess.run(
+        [sys.executable, '-c', probe, str(Path(__file__).resolve())],
+        capture_output=True, text=True, env=env, timeout=120)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"the live-sections probe exited {proc.returncode}:\n{proc.stderr}")
+    return json.loads(proc.stdout)
+
+
+def _collect_routes_in_process() -> dict[str, str]:
+    """
+    The walk behind :func:`collect_live_sections` -- reach it only through it.
 
     The paths are walked the way ``FunctionIsolationTransformer`` resolves a
     callee, attribute by attribute from ``lib``: through the lib's own
