@@ -851,10 +851,14 @@ def batch_eligible(state: SecurityState, sec_id: str, *, is_live: bool) -> bool:
       at the chart's pace, one ring wait per dependency per bar. MEASURED on a
       19-context screener whose contexts are all (spuriously) tainted by each
       other: 277 s against 64 s for the per-bar rounds;
-    * ``Lookahead.ON``: the developing-bar transport pushes OHLCV into the slot
-      per chart bar, and with ``PYNE_ALLOW_LOOKAHEAD`` the target is the
+    * ``Lookahead.ON`` on a COARSER timeframe (already out by the same-TF
+      requirement above): the developing-bar transport pushes OHLCV into the
+      slot per chart bar, and with ``PYNE_ALLOW_LOOKAHEAD`` the target is the
       CONTAINING period rather than the last closed one — neither is an as-of
-      pairing the ring can answer;
+      pairing the ring can answer. A same-TF ``ON`` context is none of that: it
+      never gets an aggregator (:func:`_get_confirmed_time`'s lookahead arm
+      requires one), so its confirmed-time rule and its batch read are
+      lookahead-blind — ``ON`` and ``OFF`` pair the same bar, and both batch;
     * lower-timeframe contexts (``request.security_lower_tf`` and the scalar
       ``plain_ltf`` merge), whose per-bar target IS the merge rule;
     * the synthetic ``__auto_rate_*`` feeds, driven by ``signal_rate_sources``
@@ -873,7 +877,6 @@ def batch_eligible(state: SecurityState, sec_id: str, *, is_live: bool) -> bool:
             and not state.is_ltf
             and not state.plain_ltf
             and not state.ltf_live_stream
-            and state.lookahead is not Lookahead.ON
             and not state.na_on_developing
             and not sec_id.startswith('__auto_rate_'))
 
