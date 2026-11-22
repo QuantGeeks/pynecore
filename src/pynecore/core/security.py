@@ -2005,10 +2005,23 @@ def create_chart_protocol(
             reader = RingReader(sec_id, sync_block, ring_conditions[sec_id])
             batch_readers[sec_id] = reader
         asof = state.batch_asof
+        # A developing batch's child publishes one chart bar's records as a
+        # group of steps that SHARE the bar's tick — on a bar that completes a
+        # security period, the official closed record and the developing one
+        # land at the same instant. Waiting for the frontier rather than for
+        # an entry at ``asof`` is what makes that group atomic to this read:
+        # the frontier stays capped below the tick until the group's last
+        # step, so the wait below ends exactly when the whole group is in, and
+        # ``last_close_at_or_before`` then picks the group's FINAL entry — the
+        # developing record — whichever order the producer's appends reached
+        # the ring in. A closed batch publishes one entry per security bar at
+        # distinct instants, so it needs no frontier-only wait.
+        dev_batch = state.dev_batch_spec is not None
         while not reader.wait_for_close(asof, state.stop_event,
                                         timeout=_LIVENESS_POLL_SECONDS,
                                         watermark_index=chart_wm_index,
-                                        spin=state.dev_batch_spec is not None):
+                                        spin=dev_batch,
+                                        require_frontier=dev_batch):
             # Only a dead producer can keep this from being satisfied: its next
             # unpublished bar closes above the chart's as-of, so publishing it
             # raises the frontier past this instant.
@@ -2900,6 +2913,16 @@ class SecurityChildContext:
         run appends at the round's fixed tick instead of a scheduled close, and
         takes that same tick as its own as-of base — the scheduled close lies in
         the future.
+    :ivar dev_batch_record: Whether this step is a record of a planned
+        developing batch. Every such record — the closed one included — appends
+        at the tick of the CHART BAR that delivers it, exactly the instant the
+        per-bar path would have pushed it at; keying a closed record by its
+        period's own scheduled close instead would land it at an instant an
+        EARLIER bar's developing record already occupies (a daily period on a
+        1-minute chart closes at 16:00, the tick of the 15:59 bar, but is
+        delivered by the next session's 09:30 bar), and whichever of the two
+        tied entries appended last would win every later pairing of that
+        instant — a read that depends on how far the producer has run.
     :ivar round_tick: The round's fixed tick instant, written by the chart into
         this context's slot together with the target.
     :ivar round_sched_next_open: End of the scheduled break containing
@@ -2908,7 +2931,8 @@ class SecurityChildContext:
     """
 
     __slots__ = ('bar_open', 'bar_close', 'frontier', 'is_round_last',
-                 'released', 'developing', 'round_tick', 'round_sched_next_open')
+                 'released', 'developing', 'dev_batch_record', 'round_tick',
+                 'round_sched_next_open')
 
     def __init__(self) -> None:
         self.bar_open = 0
@@ -2917,6 +2941,7 @@ class SecurityChildContext:
         self.is_round_last = False
         self.released: set[str] = set()
         self.developing = False
+        self.dev_batch_record = False
         self.round_tick = 0
         self.round_sched_next_open = 0
 
@@ -3312,7 +3337,15 @@ def create_security_protocol(
                 # further than the round's own as-of (``ctx.frontier``), so a
                 # consumer running on a LATER tick waits for that tick's round
                 # instead of passing the wait and reading this one.
-                close_ms = ctx.round_tick if ctx.developing else ctx.bar_close
+                #
+                # A planned developing-batch record keys by the same instant
+                # whether it is the developing or the closed one: both are
+                # pushes the per-bar path makes AT the delivering bar's tick,
+                # and the ring's pairing has to see that order (see
+                # ``SecurityChildContext.dev_batch_record``).
+                close_ms = (ctx.round_tick
+                            if ctx.developing or ctx.dev_batch_record
+                            else ctx.bar_close)
                 member_writer.append(ctx.bar_open, close_ms, value,
                                      consumer_indexes[sid], ctx.frontier)
             if ctx.is_round_last and sid not in ctx.released:

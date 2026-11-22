@@ -1241,7 +1241,8 @@ class RingReader:
     def wait_for_close(self, ms: int, stop_event: 'EventType | None' = None,
                        timeout: float | None = None,
                        watermark_index: int | None = None,
-                       spin: bool = False) -> bool:
+                       spin: bool = False,
+                       require_frontier: bool = False) -> bool:
         """
         Wait until the producer published everything closing at or before ``ms``.
 
@@ -1250,7 +1251,7 @@ class RingReader:
         closes above the consumer's as-of instant, so this always terminates.
 
         :param ms: As-of instant to wait for, in ms.
-        :param stop_event: Optional shutdown event; a set event ends the wait.
+        :param stop_event: Optional shutdown event; the wait ends on a set event.
         :param timeout: Overall timeout in seconds; ``None`` waits forever.
         :param watermark_index: This consumer's watermark row. When given, the
             row is parked at ``ms`` BEFORE the wait — that is what the producer
@@ -1263,6 +1264,19 @@ class RingReader:
             before parking on the condition (see :data:`_FRONTIER_SPIN_READS`).
             For a producer running a planned batch just behind this consumer,
             which is the shape where parking costs more than the wait.
+        :param require_frontier: End the wait ONLY when the frontier reaches
+            ``ms``, never on an entry closing at ``ms``. For a producer whose
+            one instant can carry SEVERAL entries — a developing batch's child
+            publishes one chart bar's records as a group of steps that share
+            the bar's tick, capping the frontier below the tick until the
+            group's last step — an entry at ``ms`` can be the first of an
+            incomplete group: released by it, a consumer pairs whichever tied
+            entry the producer appended last at that moment, a
+            scheduling-dependent read. The frontier reaches ``ms`` exactly when
+            the group is complete (the last step publishes it), so a
+            frontier-only wait always pairs the group's final entry. The
+            producer's next unpublished step always raises the frontier to or
+            past the consumer's as-of, so this still terminates.
         """
         if watermark_index is not None:
             self._sync.set_watermark(
@@ -1293,6 +1307,9 @@ class RingReader:
             for _ in range(_FRONTIER_SPIN_READS):
                 if self.frontier_close() >= ms:
                     return True
+        if require_frontier:
+            return self.wait_until(
+                lambda: self.frontier_close() >= ms, stop_event, timeout)
         return self.wait_until(
             lambda: self.has_close(ms) or self.frontier_close() >= ms,
             stop_event, timeout)

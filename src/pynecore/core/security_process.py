@@ -1693,6 +1693,7 @@ def security_process_main(
                                                          own_timeframe)
                     sec_ctx.frontier = _developing_frontier()
                     sec_ctx.developing = True
+                    sec_ctx.dev_batch_record = dev_values is not None
                     sec_ctx.is_round_last = True
 
                     is_new_dev_period = (last_dev_period_start != dev_time_ms)
@@ -1774,6 +1775,13 @@ def security_process_main(
                     sec_ctx.frontier = _capped_frontier(actual_bar_close(
                         sec_ctx.bar_close, 0, own_calendar, own_timeframe) - 1)
                     sec_ctx.developing = False
+                    # A planned CLOSED record appends at the delivering bar's
+                    # tick like the developing one does — keying it by the
+                    # closed period's own scheduled close would tie it to an
+                    # earlier bar's developing entry and let whichever appended
+                    # last win that instant's pairings (see
+                    # ``SecurityChildContext.dev_batch_record``).
+                    sec_ctx.dev_batch_record = dev_values is not None
                     sec_ctx.is_round_last = True
 
                     # TV semantics: a developing HTF bar and its eventual close
@@ -1833,6 +1841,7 @@ def security_process_main(
 
                 # Historical path resets dev-period tracking.
                 last_dev_period_start = None
+                sec_ctx.dev_batch_record = False
 
                 # ── (1) Historical / cross-symbol-live closed bar from local source ──
                 # In cross-symbol live mode (``live_streamer is not None``), the
