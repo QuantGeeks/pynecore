@@ -52,6 +52,14 @@ system work.)
 | feat(drawing): engine call-site tags on every drawing object | per-viewer restyle without style inputs in the computation key | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-tags.md | carried |
 | feat(viz): exact drawing change journal with call-site tags | the host renders drawings per update: applying the journal from an empty set reproduces the drawing set at every point | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-journal.md | carried |
 | feat(core): honor max_bars_back from the declaration, the function and an engine default | series memory bounded by what scripts index; RE10143 parity | not filed (sev, 2026-10-31); write-up qg/upstream/max-bars-back.md | carried |
+| feat(core): TradingView buffer growth semantics for max_bars_back | declared/function/engine bounds grow on demand, shrink once at most, alma seeds per RE10143; moving lengths never na silently | not filed (sev, 2026-10-31); write-up qg/upstream/max-bars-back.md | carried |
+| docs(qg): max-bars-back design doc — TradingView growth semantics, corrected base truth | the write-up's base truth re-measured against RE10143 | not filed (sev, 2026-10-31); write-up qg/upstream/max-bars-back.md | carried |
+| feat(drawing): tag consistency — method-form copy stamped, per-module tag ranges | copy keeps the creator's tag; tags unique across imported modules | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-tags.md | carried |
+| feat(viz): per-change journal drain — drawing version tracking | the journal carries only what changed, per field, with exact rollback replay | not filed (sev, 2026-10-31); write-up qg/upstream/drawing-journal.md | carried |
+| fix(ci): CI rot — typer range, gate4 inventory for the gates env, twin-invariant tracked names | the gates env and the suite pin what the code now defines; no bound loosened | not filed (sev, 2026-10-31) | carried |
+| fix(qg): drawing_tags test leaked its pyne library into the process | test isolation: the registered-libraries snapshot restores | not filed (sev, 2026-10-31) | carried |
+| fix(qg): runner_state negative control was count-based and order-dependent | the control asserts the exact set difference, never a count | not filed (sev, 2026-10-31) | carried |
+| fix(core): the drawing-copy registry walked in address order | gate 2's fingerprint is process-order independent | not filed (sev, 2026-10-31) | carried |
 
 ## Engine findings without a patch
 
