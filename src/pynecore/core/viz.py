@@ -179,6 +179,21 @@ def _clean(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _drop_tag(o: Any) -> Any:
+    """Strip the call-site tag recursively — the value form of a drawing state.
+
+    The tag is host metadata (which file's call site made the object), never
+    part of the drawing's value: two spellings of one script draw the same
+    objects with different tags, so a snapshot compared across them must not
+    carry it. Nested cell states carry it too.
+    """
+    if isinstance(o, dict):
+        return {k: _drop_tag(v) for k, v in o.items() if k != "tag"}
+    if isinstance(o, list):
+        return [_drop_tag(v) for v in o]
+    return o
+
+
 #
 # Plot-family metadata
 #
@@ -467,7 +482,11 @@ def _all_drawings() -> dict:
 
 
 def drawings_snapshot() -> dict:
-    """Full snapshot of every live drawing, grouped by family."""
+    """Full snapshot of every live drawing, grouped by family.
+
+    This is the VALUE form — the call-site tag is stripped (see
+    :func:`_drop_tag`); the journal events are where a host reads tags.
+    """
     snap: dict[str, Any] = {
         "t": "drawings", "lines": [], "labels": [], "boxes": [],
         "tables": [], "polylines": [], "linefills": [],
@@ -484,7 +503,7 @@ def drawings_snapshot() -> dict:
         snap["polylines"].append(_polyline_dict(p))
     for lf in list(_linefill_mod._registry):
         snap["linefills"].append(_linefill_dict(lf))
-    return snap
+    return _drop_tag(snap)
 
 
 def _self_ver(obj: Any) -> int:

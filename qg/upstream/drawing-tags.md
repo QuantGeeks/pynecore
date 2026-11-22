@@ -47,10 +47,12 @@ every object reports the tag of the site that created it, the copy its own
 site's tag (not the source's) in both syntaxes, a cell keeps its creator's tag
 on later writes, an `array.copy` through the same stamped dispatch keeps
 working, the script module and an imported library module never share a
-number, and two fresh runs produce identical tag sets (`first == second`). The
-snapshot serializes the tag of every family. Byte-identity of computed output
-is the drift gate's job (FORK.md): the tag is stamped by a lowering pass that
-only appends a keyword argument, and the golden rows are bit-identical.
+number, and two fresh runs produce identical tag sets (`first == second`). The snapshot
+serializes the tag of every family on the OBJECTS' dicts, and
+`viz.drawings_snapshot()` — the value form — strips it again (below).
+Byte-identity of computed output is the drift gate's job (FORK.md): the tag
+is stamped by a lowering pass that only appends a keyword argument, and the
+golden rows are bit-identical.
 
 ## The change
 
@@ -113,3 +115,19 @@ a field, and two script versions whose shared call sites renumber — the CI
 failure's exact shape, one never-executed creation site added above them —
 field-snapshot identically while their tags demonstrably differ. RED before
 the slot move on the first assertion; green after.
+
+## The value-form snapshot strips the tag at its boundary (qg.11, the second catch)
+
+The slot move fenced the field-walking forms — but `viz.drawings_snapshot()`
+builds from the per-family dicts that (rightly) carry `tag` for the wire, so
+the full snapshot leaked it. A private-CI identity run caught it exactly
+there (2026-11-22, scripts `28f5439`, fork `bb62e4ad`, shard 1:
+`test_house_mantis_perf` — the old port against its speedup rewrite, same
+line/box counts, byte-diff; the new file numbers its call sites differently,
+so every object's `tag` differs while every value is equal). The fix is the
+ruling's other half applied at the boundary: `drawings_snapshot()` returns
+`_drop_tag(snap)` — the tag stripped recursively (table cells included) —
+and the journal events remain where a host reads tags.
+`qg/tests/test_drawing_tags.py::__test_the_snapshot_excludes_the_tag_of_every_family__`
+pins it: no family's snapshot object carries a `tag` key, no cell does, while
+the objects themselves still report their tag.

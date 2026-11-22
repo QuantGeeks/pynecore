@@ -114,15 +114,17 @@ def __test_tags_are_unique_across_modules__():
     assert from_lib.tag != own.tag
 
 
-def __test_the_snapshot_serializes_the_tag_of_every_family__():
+def __test_the_snapshot_excludes_the_tag_of_every_family__():
+    """The snapshot is the VALUE form compared across spellings of one script;
+    the tag is host metadata (which file's call site made the object) and two
+    spellings tag the same drawing differently — a private-CI identity run
+    (old port vs speedup, same counts) failed on exactly that."""
     _run()
     snap = json.loads(json.dumps(viz.drawings_snapshot()))
-    assert snap["lines"][0]["tag"] == TAG_LINE_BASE
-    assert snap["labels"][0]["tag"] == TAG_LABEL
-    assert snap["boxes"][0]["tag"] == TAG_BOX
-    assert snap["polylines"][0]["tag"] == TAG_POLYLINE
-    assert snap["linefills"][0]["tag"] == TAG_LINEFILL
-    tbl = snap["tables"][0]
-    assert tbl["tag"] == TAG_TABLE
-    by_text = {c["text"]: c["tag"] for c in tbl["cells"]}
-    assert by_text == {"A2": TAG_CELL_A, "B": TAG_CELL_B}
+    for family in ("lines", "labels", "boxes", "polylines", "linefills", "tables"):
+        for obj in snap[family]:
+            assert "tag" not in obj, (family, obj)
+    for cell in snap["tables"][0]["cells"]:
+        assert "tag" not in cell, cell
+    # ... while the objects themselves still carry their tag for the journal
+    assert line.all()[0].tag == TAG_LINE_BASE
