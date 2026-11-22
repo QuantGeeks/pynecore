@@ -63,6 +63,7 @@ system work.)
 | fix(core): developing-batch ring entries pair at their delivering bar's tick | the batch transport of a lookahead_on HTF context is run-to-run exact — determinism rule (spec §4.9) | not filed (sev, 2026-11-21); write-up qg/upstream/devbatch-session-close-tie.md | carried |
 | perf(core): a same-timeframe lookahead_on context batches like lookahead_off | a same-TF ON context pairs the same bar as OFF on history (no aggregator → the confirmed-time rule is lookahead-blind), so the blanket ON exclusion cost the batch transport for nothing — measured 2x on a 63-column, 41,340-bar twin (20.2 s → 10.9 s, private CI) | not filed (sev, 2026-11-21) | carried |
 | fix(drawing): the call-site tag is a slot, not a field — identity forms cannot see it | the tag is host metadata, never part of a drawing's value: a field-walking snapshot/identity must not carry it (a private-CI twin failed exactly there, two script versions equal on every field but tag) | not filed (sev, 2026-11-21); write-up qg/upstream/drawing-tags.md | carried |
+| fix(core): a developing-batch step's frontier stays below its next planned record's tick | a planned tick inside a scheduled break (chart bars overrunning the declared session end) published the break-end extension as its frontier, releasing the chart's per-bar read early — a wrong pairing, or a stale value with no error for a dev_skip context; determinism rule (spec §4.9) | not filed (sev, 2026-11-21); write-up qg/upstream/devbatch-out-of-session-frontier.md | carried |
 
 ## Engine findings without a patch
 
@@ -71,6 +72,7 @@ system work.)
 | `ta.pivot_point_levels`: R4/S4/R5/S5 are NaN | §9.2 | to file | not offered until fixed (§9.2) |
 | `smc_luxalgo`: live crash with FVG-15m and daily levels both on (each alone passes) | §1.5 | to file | watched |
 | `request.security`: contexts frozen in live with host data | §4.7 | upstream #49 watched | served by the service's shared feeds (§4.7), not PyneCore's contexts |
+| the multi-timeframe ribbon helper shape does not batch: a run-constant guard keeps `signal_per_bar` unproved and cross-reads make every context a dependent/consumer — both exclusions are correctness boundaries, and lifting them needs an exactness proof first | §4.9 (determinism rule: batch must equal per-bar) | n/a (fork-only batch machinery); write-up qg/upstream/ribbon-contexts-batch.md | spec written; not implemented (2026-11-21) |
 
 ## Gates
 
