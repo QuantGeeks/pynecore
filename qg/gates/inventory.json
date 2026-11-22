@@ -1805,6 +1805,7 @@
 "pynecore.core.security_shm:RingReader.wait_for_close<default:1>",
 "pynecore.core.security_shm:RingReader.wait_for_close<default:2>",
 "pynecore.core.security_shm:RingReader.wait_for_close<default:3>",
+"pynecore.core.security_shm:RingReader.wait_for_close<default:4>",
 "pynecore.core.security_shm:RingReader.wait_until<default:0>",
 "pynecore.core.security_shm:RingReader.wait_until<default:1>",
 "pynecore.core.security_shm:RingReader.wait_until<default:2>",
