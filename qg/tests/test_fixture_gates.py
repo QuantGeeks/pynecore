@@ -319,8 +319,9 @@ def __test_perf_window_gates_against_the_same_runs_compensated__():
     assert big.returncode == 1, big.stdout
     assert "PERF BUDGET FAIL" in big.stdout.strip().splitlines()[-1], big.stdout
     for win in (ln for ln in big.stdout.splitlines() if " window " in ln):
-        assert re.search(r"vs compensated [0-9.]+$", win), win
-        assert float(win.rsplit(" ", 1)[1]) > 1.75, win
+        m = re.search(r"vs compensated ([0-9.]+)", win)  # the line ends with the rounds list
+        assert m, win
+        assert float(m.group(1)) > 1.75, win
     small = __test_helper_gate(*args, env={"QG_PERF_INJECT_WINDOW_FACTOR": "0.3"})
     assert (small.returncode, small.stdout.strip().splitlines()[-1]) == (0, "PERF BUDGET PASS"), small.stdout
     # Negative control: the unpoisoned run passes with every window vs
@@ -328,7 +329,9 @@ def __test_perf_window_gates_against_the_same_runs_compensated__():
     plain = __test_helper_gate(*args)
     assert plain.stdout.strip().splitlines()[-1] == "PERF BUDGET PASS", plain.stdout
     for win in (ln for ln in plain.stdout.splitlines() if " window " in ln):
-        assert float(win.rsplit(" ", 1)[1]) <= 1.75, win
+        m = re.search(r"vs compensated ([0-9.]+)", win)
+        assert m, win
+        assert float(m.group(1)) <= 1.75, win
 
 
 def __test_golden_reads_a_plot_before_volume__(tmp_path):
