@@ -1692,6 +1692,24 @@ def security_process_main(
                     sec_ctx.bar_close = actual_bar_close(dev_time_ms, 0, own_calendar,
                                                          own_timeframe)
                     sec_ctx.frontier = _developing_frontier()
+                    if dev_batch_running and dev_batch_next is not None:
+                        # A planned step whose tick falls inside a scheduled break
+                        # (a chart bar outside every declared session) must not
+                        # publish ``_developing_frontier``'s break-end extension:
+                        # per bar that claim is sound — the context's own grid
+                        # has no close inside the break — but a batch replay
+                        # closes one entry at EVERY chart bar's tick, so the
+                        # later break bars' records still close below the break
+                        # end. A frontier run into the break releases the
+                        # chart's per-bar read before its record is in, and it
+                        # pairs an earlier bar's value (or fails the pairing
+                        # window check). The replay holds its next record one
+                        # step ahead, so capping below THAT tick is exactly
+                        # "everything closing at or before the frontier is
+                        # published"; the sequence's last step replays with no
+                        # next record and keeps the full extension.
+                        sec_ctx.frontier = min(sec_ctx.frontier,
+                                               dev_batch_next[7] - 1)
                     sec_ctx.developing = True
                     sec_ctx.dev_batch_record = dev_values is not None
                     sec_ctx.is_round_last = True
