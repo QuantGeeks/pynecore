@@ -56,3 +56,8 @@ src/pynecore/core/_native_color.c
 *.so
 *.pyd
 wheelhouse/
+
+# Compiled script TOML the runner writes next to qg test scripts outside
+# pytest (script.py saves it when PYNE_SAVE_SCRIPT_TOML!=0 and no pytest
+# config is present) — artifacts, never sources
+qg/tests/scripts/*.toml
