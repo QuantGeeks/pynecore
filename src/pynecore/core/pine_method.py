@@ -188,8 +188,13 @@ def _adapt_exported_kwargs(exported: Exported, kwargs: dict) -> dict:
 
 
 #: The drawing families' copy functions: the only ``copy`` methods that take
-#: the engine's call-site ``tag`` (see the DrawingTags lowering step)
-_DRAWING_COPIES = frozenset((line.copy, label.copy, box.copy))
+#: the engine's call-site ``tag`` (see the DrawingTags lowering step). A
+#: tuple, never a set: gate 2's fingerprint walks this attribute and sorts
+#: set members by ``repr``, and a function's repr carries its address -- two
+#: fresh processes then disagreed which member walked first, and the
+#: ``ref:`` hash of ``pynecore.lib.line:copy`` & co. with it (combined Linux
+#: suite, 2026-11-21).
+_DRAWING_COPIES = (line.copy, label.copy, box.copy)
 
 
 def _drop_copy_tag(method: str, func: Callable, kwargs: dict) -> dict:

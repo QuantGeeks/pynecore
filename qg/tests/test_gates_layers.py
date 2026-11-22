@@ -65,3 +65,17 @@ def __test_fingerprint_is_pycache_independent__(tmp_path):
     assert cold.returncode == 0 and warm.returncode == 0, cold.stderr[-500:] + warm.stderr[-500:]
     fa, fb = json.loads(cold.stdout), json.loads(warm.stdout)
     assert [k for k in set(fa) | set(fb) if fa.get(k) != fb.get(k)] == []
+
+
+def __test_the_drawing_copy_registry_walks_in_a_fixed_order__():
+    """ the fingerprint reaches every copy member at a stable path: a set here
+    once sorted its members by repr, and a function's repr carries its address,
+    so two fresh processes disagreed which member walked first and the ref:
+    hash of pynecore.lib.line:copy & co. flipped between them (combined Linux
+    suite, 2026-11-21; the pycache test above is the end-to-end form) """
+    from pynecore.core import pine_method
+    from pynecore.lib import box, label, line
+    copies = pine_method._DRAWING_COPIES
+    assert isinstance(copies, tuple), \
+        "a set/frozenset walks in repr order, and a function's repr is address-bearing"
+    assert list(copies) == [line.copy, label.copy, box.copy]
