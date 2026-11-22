@@ -92,8 +92,13 @@ def __test_tags_are_unique_across_modules__():
     # the script and the library it imports each count their sites from their
     # own module's base: a host keying a restyle on a tag never sees the two
     # modules share a number
+    from pynecore.core import script as script_core
     for stem in ("drawing_tags_modules", "drawing_tags_lib"):
         sys.modules.pop(stem, None)
+    # A pyne library the runner imports registers process-globally; leaving it
+    # registered makes every LATER runner in this process execute the stale
+    # lib's main too (a test_097 export-count probe caught exactly that)
+    saved_libraries = list(script_core._registered_libraries)
     try:
         r = ScriptRunner(script_path=SCRIPTS / "drawing_tags_modules.py",
                          ohlcv_iter=iter(synthetic_bars(3, 5)), syminfo=default_syminfo())
@@ -102,6 +107,7 @@ def __test_tags_are_unique_across_modules__():
     finally:
         for stem in ("drawing_tags_modules", "drawing_tags_lib"):
             sys.modules.pop(stem, None)
+        script_core._registered_libraries[:] = saved_libraries
     from_lib, own = line.all()[-2:]
     assert from_lib.tag == tag_base("drawing_tags_lib")
     assert own.tag == tag_base("drawing_tags_modules")
