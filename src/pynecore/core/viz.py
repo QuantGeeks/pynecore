@@ -487,6 +487,17 @@ def drawings_snapshot() -> dict:
     return snap
 
 
+def _self_ver(obj: Any) -> int:
+    """A drawing's own version (``types.base.Drawing`` bumps it per write)."""
+    return obj._ver
+
+
+def _linefill_ver(obj: Any) -> tuple[int, int, int]:
+    """A linefill's effective version: its state embeds its member lines'
+    (``line1_state`` / ``line2_state``), so a member's change must count."""
+    return (obj._ver, obj.line1._ver, obj.line2._ver)
+
+
 def journal_diff(shadow: dict, bar_index: int) -> list[dict]:
     """Diff the live drawings against ``shadow`` and update it in place.
 
@@ -497,30 +508,49 @@ def journal_diff(shadow: dict, bar_index: int) -> list[dict]:
     ``s``, update applies ``f``, delete drops the id) reproduces the full
     drawing set at every point the journal was drained.
 
-    :param shadow: ``{(family, vid): state}`` from the previous emission;
-        mutated here
+    The cost follows what changed: every drawing field write bumps the
+    object's version (``types.base.Drawing``; a table cell's writes bump its
+    table's), so a drawing is re-serialized only when its version moved or it
+    is new, and a drain after a bar or tick that touched nothing serializes
+    nothing — the registry walk itself is membership only.
+
+    :param shadow: ``{(family, vid): (state, version)}`` from the previous
+        emission; mutated here
     :param bar_index: The current bar index, recorded on every event
     :return: A list of ``create`` / ``update`` / ``delete`` event records
     """
-    current = _all_drawings()
     events: list[dict] = []
-    for key, state in current.items():
-        old = shadow.get(key)
-        if old is None:
-            events.append({"t": "ev", "i": bar_index, "op": "create",
-                           "obj": key[0], "id": key[1], "tag": state["tag"],
-                           "s": state})
-        elif old != state:
-            fields = {k: v for k, v in state.items() if old.get(k) != v}
-            events.append({"t": "ev", "i": bar_index, "op": "update",
-                           "obj": key[0], "id": key[1], "tag": state["tag"],
-                           "f": fields})
-    for key, old in shadow.items():
-        if key not in current:
-            events.append({"t": "ev", "i": bar_index, "op": "delete",
-                           "obj": key[0], "id": key[1], "tag": old["tag"]})
-    shadow.clear()
-    shadow.update(current)
+    seen: set[tuple[str, int]] = set()
+    for family, registry, serialize, version in (
+            ('line', _line_mod._registry, _line_dict, _self_ver),
+            ('label', _label_mod._registry, _label_dict, _self_ver),
+            ('box', _box_mod._registry, _box_dict, _self_ver),
+            ('table', _table_mod._registry, _table_dict, _self_ver),
+            ('polyline', _polyline_mod._registry, _polyline_dict, _self_ver),
+            ('linefill', _linefill_mod._registry, _linefill_dict, _linefill_ver),
+    ):
+        for obj in list(registry):
+            key = (family, obj.vid)
+            seen.add(key)
+            entry = shadow.get(key)
+            ver = version(obj)
+            if entry is not None and entry[1] == ver:
+                continue  # untouched since the last emission
+            state = serialize(obj)
+            if entry is None:
+                events.append({"t": "ev", "i": bar_index, "op": "create",
+                               "obj": family, "id": key[1], "tag": state["tag"],
+                               "s": state})
+            elif entry[0] != state:
+                fields = {k: v for k, v in state.items() if entry[0].get(k) != v}
+                events.append({"t": "ev", "i": bar_index, "op": "update",
+                               "obj": family, "id": key[1], "tag": state["tag"],
+                               "f": fields})
+            shadow[key] = (state, ver)
+    for key in [k for k in shadow if k not in seen]:
+        events.append({"t": "ev", "i": bar_index, "op": "delete",
+                       "obj": key[0], "id": key[1], "tag": shadow[key][0]["tag"]})
+        del shadow[key]
     return events
 
 

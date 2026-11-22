@@ -1,6 +1,6 @@
 # Design: an exact drawing change journal
 
-**PyneCore version:** 6.10.10.
+**PyneCore version:** 6.10.10+qg.9 (exact journal), 6.10.10+qg.10 (per-change drain).
 
 ## The problem
 
@@ -70,6 +70,34 @@ one create / three updates / one delete, create carries `s.id`, delete no
 event (a delete reads it from the shadow). `ScriptRunner._drain_viz_journal`
 is the single drain point, called at bar close (from `_write_viz_bar`) and
 after every executed intra-bar tick run in the live loop.
+
+Since qg.10 the drain's cost follows what changed: every drawing field write
+bumps the object's version (`types.base.Drawing.__setattr__` — the single
+chokepoint; a `TableCell` write bumps its owning table's, and a linefill's
+effective version is the composite of its own and its two member lines',
+because its serialized state embeds theirs). The drain walks the registries
+for membership but re-serializes only objects whose version moved since the
+last emission (`qg/tests/test_drawing_journal_cost.py`). The wire is
+unchanged — the exactness/replay evidence above still passes byte for byte.
+
+## Cost (measured 2026-11-21, Mantis live batch, 9000 1m bars, 296 drawings)
+
+An independent verification measured the qg.9 drain on its VM: a no-change
+drain cost 1703 µs against a 1154 µs per-bar mean — on a live tick the drain
+roughly doubled the tick. Re-measured before/after on one Mac (same probe,
+`venv-head` = qg.9 vs the worktree = qg.10), so the ratios are comparable:
+
+| | qg.9 | qg.10 |
+|---|---|---|
+| no-change drain | 240 µs | 25 µs (9.6×) |
+| one-field-change drain | 228 µs | 28 µs |
+| batch per-bar mean | 139.6 µs | 149.5 µs |
+| live tick ≈ run + drain | ~380 µs | ~175 µs (2.2×) |
+
+The drain drops from 1.7× a bar's cost to 17% of it. The per-bar mean pays
+~7% for the per-write version bump (the same Mantis batch, drawing-heavy);
+on a drawing-light script the bump is invisible. The drawing set is
+identical on both sides (`lines 177, labels 102, boxes 17`).
 
 ## The open question
 

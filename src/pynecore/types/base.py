@@ -35,9 +35,25 @@ class StrLiteral(str):
 class Drawing:
     """
     Base of the chart-object types: line, label, box, table, linefill and polyline.
+
+    Every field write bumps the object's ``_ver``: the viz journal's drain
+    serializes only the drawings whose version moved since the last emission,
+    so its cost follows what changed. The writes all come from the lib's
+    creation and setter functions — Pine cannot touch a drawing's fields
+    directly — so the version cannot miss a mutation.
     """
 
-    __slots__ = ()
+    __slots__ = ('_ver',)
+
+    def __new__(cls, *args, **kwargs):
+        obj = super().__new__(cls)
+        object.__setattr__(obj, '_ver', 0)
+        return obj
+
+    def __setattr__(self, name: str, value) -> None:
+        if name != '_ver':
+            object.__setattr__(self, '_ver', self._ver + 1)
+        object.__setattr__(self, name, value)
 
     def __deepcopy__(self, memo: dict) -> 'Drawing':
         """

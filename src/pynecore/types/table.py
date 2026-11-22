@@ -7,7 +7,12 @@ from .base import Drawing
 
 @dataclass(slots=True)
 class TableCell:
-    """Represents a single cell in a table."""
+    """Represents a single cell in a table.
+
+    A cell serializes as part of its table, and its writes ride the table's
+    journal version: every field write bumps ``_owner._ver`` (the owning
+    table adopts the cell when it stores it — see ``Table.get_cell``).
+    """
     text: str = ""
     width: int | float = 0
     height: int | float = 0
@@ -29,6 +34,18 @@ class TableCell:
 
     # Stable id of the script call site that created the cell
     tag: int = -1
+
+    # The table this cell lives in, set on adoption; a write marks it dirty
+    _owner: 'Table' = field(default=None, init=False, repr=False, compare=False)
+
+    def __setattr__(self, name: str, value) -> None:
+        if name != '_owner':
+            # ``_owner`` is init=False: it is unset during the dataclass
+            # ``__init__`` (the cell is not adopted yet, nothing to bump)
+            owner = getattr(self, '_owner', None)
+            if owner is not None:
+                object.__setattr__(owner, '_ver', owner._ver + 1)
+        object.__setattr__(self, name, value)
 
 
 @dataclass(slots=True, eq=False)
@@ -58,16 +75,25 @@ class Table(Drawing):
         """Get or create a cell at the specified position."""
         if (column, row) not in self.cells:
             self.cells[(column, row)] = TableCell()
-        return self.cells[(column, row)]
+            # A new cell changes the table's serialized state; adoption lets
+            # the cell's own writes bump the table's version too
+            object.__setattr__(self, '_ver', self._ver + 1)
+        cell = self.cells[(column, row)]
+        if cell._owner is not self:
+            cell._owner = self
+        return cell
 
     def set_cell(self, column: int, row: int, cell: TableCell) -> None:
         """Set a cell at the specified position."""
         self.cells[(column, row)] = cell
+        cell._owner = self
+        object.__setattr__(self, '_ver', self._ver + 1)
 
     def clear_cell(self, column: int, row: int) -> None:
         """Clear a cell at the specified position."""
         if (column, row) in self.cells:
             del self.cells[(column, row)]
+            object.__setattr__(self, '_ver', self._ver + 1)
 
     def clear_cells(self, start_column: int, start_row: int, end_column: int, end_row: int) -> None:
         """Clear a range of cells."""
